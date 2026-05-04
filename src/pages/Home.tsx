@@ -147,7 +147,7 @@ export default function Home() {
           <img 
             src="/logo-ftc.png" 
             alt="Fortune Tennis Club Logo" 
-            style={{ width: '220px', height: 'auto', dropShadow: '0 10px 15px rgba(0,0,0,0.5)' }} 
+            style={{ width: '220px', height: 'auto', filter: 'drop-shadow(0 10px 15px rgba(0,0,0,0.5))' }} 
           />
         </div>
         <h2 style={{ marginBottom: '0.5rem', fontSize: '2.5rem', letterSpacing: '-0.025em', color: 'white' }}>Fortune Tennis Club</h2>
@@ -247,7 +247,7 @@ export default function Home() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
-                {upcomingMatches.map((m, idx) => {
+                {upcomingMatches.map((m) => {
                   const isOngoing = m.status === 'ongoing'
                   return (
                     <div key={m.id} style={{ 

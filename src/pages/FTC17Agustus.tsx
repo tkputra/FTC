@@ -22,7 +22,7 @@ type Match = {
 }
 
 export default function FTC17Agustus() {
-  const [activeTab, setActiveTab] = useState<'tim' | 'jadwal' | 'klasemen' | 'knockout'>('tim')
+  const [activeTab, setActiveTab] = useState<'pendaftaran' | 'grupA' | 'grupB' | 'knockout'>('pendaftaran')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   
   // Roster States
@@ -33,7 +33,6 @@ export default function FTC17Agustus() {
   const [tournamentTeams, setTournamentTeams] = useState<GroupTeam[]>([])
   const [matches, setMatches] = useState<Match[]>([])
   const [scoresInput, setScoresInput] = useState<Record<string, { s1: string, s2: string }>>({})
-  const [loading, setLoading] = useState(true)
 
   // Roster add state
   const [p1, setP1] = useState('')
@@ -44,7 +43,6 @@ export default function FTC17Agustus() {
   }, [])
 
   async function fetchData() {
-    setLoading(true)
     
     // 1. Fetch Players
     const { data: playersData } = await supabase.from('players').select('*').order('name')
@@ -72,8 +70,6 @@ export default function FTC17Agustus() {
       })
       setMatches(matchesData as Match[])
     }
-
-    setLoading(false)
   }
 
   function getPlayerName(id: string) {
@@ -97,8 +93,15 @@ export default function FTC17Agustus() {
     )
   }
 
-  // --- TAB: MANAJEMEN ROSTER & TIM ---
-  async function addPair(e: React.FormEvent) {
+  const getMatchGroup = (m: Match): 'A' | 'B' | null => {
+    const pair1 = getPairByPlayerIds(m.team1_player1_id, m.team1_player2_id)
+    if (!pair1) return null
+    const tTeam = tournamentTeams.find(t => t.pair_id === pair1.id)
+    return tTeam ? tTeam.group_name : null
+  }
+
+  // --- TAB 1: MANAJEMEN PENDAFTARAN ---
+  async function addPairToRoster(e: React.FormEvent) {
     e.preventDefault()
     if (!p1 || !p2) {
       alert('Pilih 2 pemain untuk membuat tim.')
@@ -128,41 +131,21 @@ export default function FTC17Agustus() {
     }
   }
 
-  async function deletePair(id: string) {
-    if (!window.confirm('Hapus tim ini dari roster?')) return
-    const { error } = await supabase.from('fixed_pairs').delete().eq('id', id)
-    if (error) alert('Gagal menghapus: ' + error.message)
+  async function registerTeamToTournament(pairId: string) {
+    if (tournamentTeams.length >= 9) {
+      alert('Maksimal 9 tim yang dapat didaftarkan ke turnamen 17 Agustus.')
+      return
+    }
+
+    // Default assign to group A
+    const { error } = await supabase
+      .from('ftc_17_agustus_teams')
+      .insert([{ pair_id: pairId, group_name: 'A' }])
+    if (error) alert('Gagal mendaftarkan tim: ' + error.message)
     else fetchData()
   }
 
-  // --- MANAJEMEN GRUP TURNAMEN ---
-  async function registerToGroup(pairId: string, groupName: 'A' | 'B') {
-    if (tournamentTeams.length >= 9 && !tournamentTeams.find(t => t.pair_id === pairId)) {
-      if (!window.confirm('Sudah ada 9 tim terdaftar. Apakah ingin tetap menambahkan tim ini?')) {
-        return
-      }
-    }
-
-    const exists = tournamentTeams.find(t => t.pair_id === pairId)
-    if (exists) {
-      // Update group
-      const { error } = await supabase
-        .from('ftc_17_agustus_teams')
-        .update({ group_name: groupName })
-        .eq('pair_id', pairId)
-      if (error) alert('Gagal memindahkan grup: ' + error.message)
-      else fetchData()
-    } else {
-      // Insert new
-      const { error } = await supabase
-        .from('ftc_17_agustus_teams')
-        .insert([{ pair_id: pairId, group_name: groupName }])
-      if (error) alert('Gagal mendaftarkan ke grup: ' + error.message)
-      else fetchData()
-    }
-  }
-
-  async function unregisterFromTournament(pairId: string) {
+  async function unregisterTeamFromTournament(pairId: string) {
     const { error } = await supabase
       .from('ftc_17_agustus_teams')
       .delete()
@@ -171,52 +154,50 @@ export default function FTC17Agustus() {
     else fetchData()
   }
 
+  async function deletePairFromRoster(id: string) {
+    if (!window.confirm('Hapus tim ini dari roster?')) return
+    const { error } = await supabase.from('fixed_pairs').delete().eq('id', id)
+    if (error) alert('Gagal menghapus: ' + error.message)
+    else fetchData()
+  }
+
+  // Acak & Bagi Grup
   async function autoSplitGroups() {
-    if (pairs.length < 2) {
-      alert('Daftarkan tim di roster terlebih dahulu sebelum membagi grup.')
+    if (tournamentTeams.length === 0) {
+      alert('Daftarkan tim ke turnamen terlebih dahulu.')
       return
     }
     
-    // Tanyakan konfirmasi karena akan mereset pembagian grup yang ada
     if (tournamentTeams.length > 0) {
-      if (!window.confirm('Membagi grup otomatis akan mereset pendaftaran grup yang ada saat ini dan menjadwalkan ulang pertandingan. Lanjutkan?')) {
+      if (!window.confirm('Membagi grup otomatis akan mereset pembagian grup yang ada saat ini. Lanjutkan?')) {
         return
       }
     }
 
-    // Ambil maksimal 9 tim untuk diacak (atau seluruh tim jika kurang dari 9)
-    const teamsToShuffle = [...pairs].slice(0, 9)
-    
-    // Acak tim
-    for (let i = teamsToShuffle.length - 1; i > 0; i--) {
+    const shuffledTeams = [...tournamentTeams]
+    for (let i = shuffledTeams.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      [teamsToShuffle[i], teamsToShuffle[j]] = [teamsToShuffle[j], teamsToShuffle[i]];
+      [shuffledTeams[i], shuffledTeams[j]] = [shuffledTeams[j], shuffledTeams[i]];
     }
 
-    // Hapus pendaftaran lama
-    await supabase.from('ftc_17_agustus_teams').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+    const mid = Math.ceil(shuffledTeams.length / 2) // Bila 9, Group A = 5, Group B = 4
 
-    const newRegistrations: { pair_id: string; group_name: 'A' | 'B' }[] = []
-    const mid = Math.ceil(teamsToShuffle.length / 2) // Bila 9, Group A = 5, Group B = 4
+    const updates = shuffledTeams.map((team, idx) => ({
+      id: team.id,
+      pair_id: team.pair_id,
+      group_name: idx < mid ? 'A' : 'B' as 'A' | 'B'
+    }))
 
-    for (let i = 0; i < teamsToShuffle.length; i++) {
-      newRegistrations.push({
-        pair_id: teamsToShuffle[i].id,
-        group_name: i < mid ? 'A' : 'B'
-      })
-    }
-
-    const { error } = await supabase.from('ftc_17_agustus_teams').insert(newRegistrations)
+    const { error } = await supabase.from('ftc_17_agustus_teams').upsert(updates)
     if (error) {
-      alert('Gagal menyimpan pembagian grup otomatis: ' + error.message)
+      alert('Gagal mengacak grup otomatis: ' + error.message)
     } else {
-      // Automatically generate matches for these teams
-      await generateGroupMatches(newRegistrations)
+      alert('Grup berhasil diacak secara acak!')
       fetchData()
     }
   }
 
-  // --- TAB: JADWAL ---
+  // --- MATCH CONTROL ---
   async function setOngoing(matchId: string) {
     const { error } = await supabase.from('matches').update({ status: 'ongoing' }).eq('id', matchId)
     if (error) alert('Gagal update status: ' + error.message)
@@ -249,7 +230,6 @@ export default function FTC17Agustus() {
   }
 
   async function quickCompleteMatch(matchId: string, winnerTeam: 1 | 2) {
-    // Quick assign a default set score of 6 - 0 or 0 - 6 to make standings calculation function properly
     const s1 = winnerTeam === 1 ? 6 : 0;
     const s2 = winnerTeam === 2 ? 6 : 0;
 
@@ -260,25 +240,22 @@ export default function FTC17Agustus() {
       winner_team: winnerTeam
     }).eq('id', matchId)
     
-    if (error) alert('Gagal menyimpan hasil pemenang: ' + error.message)
+    if (error) alert('Gagal menyimpan hasil: ' + error.message)
     else fetchData()
   }
 
-  // Acak Jadwal Fase Grup (Round Robin)
-  async function generateGroupMatches(teamsList?: { pair_id: string; group_name: 'A' | 'B' }[]) {
-    const activeTeams = teamsList || tournamentTeams
-    const teamsA = activeTeams.filter(t => t.group_name === 'A')
-    const teamsB = activeTeams.filter(t => t.group_name === 'B')
+  // Buat Jadwal Pertandingan (Round Robin)
+  async function generateGroupMatches() {
+    const teamsA = tournamentTeams.filter(t => t.group_name === 'A')
+    const teamsB = tournamentTeams.filter(t => t.group_name === 'B')
 
-    if (teamsA.length < 2 || teamsB.length < 2) {
-      if (!teamsList) alert('Setiap grup minimal harus memiliki 2 tim untuk membuat jadwal.')
+    if (teamsA.length < 2 && teamsB.length < 2) {
+      alert('Minimal salah satu grup harus memiliki 2 tim untuk membuat jadwal.')
       return
     }
 
-    if (!teamsList) {
-      if (!window.confirm('Menghasilkan jadwal baru akan menghapus semua antrean jadwal FASE GRUP yang belum dimulai. Lanjutkan?')) {
-        return
-      }
+    if (!window.confirm('Buat jadwal pertandingan fase grup baru? (Jadwal lama yang belum mulai akan dihapus)')) {
+      return
     }
 
     // Ambil semua match turnamen 17 agustus saat ini
@@ -331,9 +308,8 @@ export default function FTC17Agustus() {
     }
 
     const { error } = await supabase.from('matches').insert(newMatches)
-    if (error) {
-      if (!teamsList) alert('Gagal menyimpan jadwal fase grup: ' + error.message)
-    }
+    if (error) alert('Gagal menyimpan jadwal fase grup: ' + error.message)
+    else fetchData()
   }
 
   // --- KLASEMEN GRUP ---
@@ -352,7 +328,6 @@ export default function FTC17Agustus() {
   function getGroupStandings(groupName: 'A' | 'B'): StandingEntry[] {
     const groupTeamIds = new Set(tournamentTeams.filter(t => t.group_name === groupName).map(t => t.pair_id))
     
-    // Inisialisasi entri
     const standingsMap = new Map<string, StandingEntry>()
     pairs.forEach(p => {
       if (groupTeamIds.has(p.id)) {
@@ -370,7 +345,6 @@ export default function FTC17Agustus() {
       }
     })
 
-    // Filter match grup yang selesai
     const groupMatchesCompleted = matches.filter(
       m => m.stage === 'group' && m.status === 'completed'
     )
@@ -410,19 +384,14 @@ export default function FTC17Agustus() {
     })
 
     return Array.from(standingsMap.values()).sort((a, b) => {
-      // 1. Poin (Kemenangan)
       if (b.points !== a.points) return b.points - a.points
-      // 2. Selisih Skor Game
       if (b.diff !== a.diff) return b.diff - a.diff
-      // 3. Game Memasukkan (GS)
       if (b.gamesWon !== a.gamesWon) return b.gamesWon - a.gamesWon
-      // 4. Alfabetis
       return a.name.localeCompare(b.name)
     })
   }
 
-  // --- TAB: FASE GUGUR (KNOCKOUT) ---
-  // Generate brackets
+  // --- FASE GUGUR ---
   async function generateKnockoutBrackets() {
     const standingsA = getGroupStandings('A')
     const standingsB = getGroupStandings('B')
@@ -432,7 +401,6 @@ export default function FTC17Agustus() {
       return
     }
 
-    // Pastikan seluruh pertandingan fase grup selesai
     const ongoingOrScheduledGroup = matches.filter(m => m.stage === 'group' && m.status !== 'completed')
     if (ongoingOrScheduledGroup.length > 0) {
       alert(`Masih ada ${ongoingOrScheduledGroup.length} pertandingan fase grup yang belum selesai. Selesaikan semuanya terlebih dahulu!`)
@@ -443,7 +411,6 @@ export default function FTC17Agustus() {
       return
     }
 
-    // Hapus semi final & final terjadwal sebelumnya
     const scheduledKnockouts = matches.filter(m => (m.stage === 'semifinal' || m.stage === 'final') && m.status === 'scheduled')
     if (scheduledKnockouts.length > 0) {
       await supabase.from('matches').delete().in('id', scheduledKnockouts.map(m => m.id))
@@ -454,8 +421,6 @@ export default function FTC17Agustus() {
     const tB1 = pairs.find(p => p.id === standingsB[0].pairId)!
     const tB2 = pairs.find(p => p.id === standingsB[1].pairId)!
 
-    // SF 1: Juara Grup A vs Runner-up Grup B
-    // SF 2: Juara Grup B vs Runner-up Grup A
     const newSFs = [
       {
         match_type: 'ftc_17_agustus',
@@ -484,7 +449,6 @@ export default function FTC17Agustus() {
     else fetchData()
   }
 
-  // Generate Final
   async function generateFinalBracket() {
     const sfs = matches.filter(m => m.stage === 'semifinal')
     const completedSFs = sfs.filter(m => m.status === 'completed')
@@ -498,7 +462,6 @@ export default function FTC17Agustus() {
       return
     }
 
-    // Hapus final terjadwal jika ada
     const scheduledFinal = matches.filter(m => m.stage === 'final' && m.status === 'scheduled')
     if (scheduledFinal.length > 0) {
       await supabase.from('matches').delete().in('id', scheduledFinal.map(m => m.id))
@@ -534,8 +497,8 @@ export default function FTC17Agustus() {
     else fetchData()
   }
 
-  // Helper
-  const displayGroupMatches = matches.filter(m => m.stage === 'group' && (m.status === 'scheduled' || m.status === 'ongoing' || (m.status === 'completed' && m.match_date === date)))
+  const groupAMatches = matches.filter(m => m.stage === 'group' && getMatchGroup(m) === 'A')
+  const groupBMatches = matches.filter(m => m.stage === 'group' && getMatchGroup(m) === 'B')
   const displaySFMatches = matches.filter(m => m.stage === 'semifinal')
   const displayFinalMatch = matches.filter(m => m.stage === 'final')
 
@@ -576,37 +539,37 @@ export default function FTC17Agustus() {
       {/* Navigation Sub-Tabs */}
       <div className="flex bg-[rgba(255,255,255,0.1)] p-1 rounded-[var(--radius-md)] border border-[rgba(255,255,255,0.1)] overflow-x-auto">
         <button 
-          onClick={() => setActiveTab('tim')}
+          onClick={() => setActiveTab('pendaftaran')}
           style={{ flex: 1, minWidth: '120px', padding: '0.75rem', borderRadius: 'calc(var(--radius-md) - 4px)', border: 'none', 
-            background: activeTab === 'tim' ? '#ef4444' : 'transparent',
-            color: activeTab === 'tim' ? 'white' : 'var(--color-text-light)',
-            fontWeight: activeTab === 'tim' ? 600 : 400, cursor: 'pointer', transition: 'all 0.2s'
+            background: activeTab === 'pendaftaran' ? '#ef4444' : 'transparent',
+            color: activeTab === 'pendaftaran' ? 'white' : 'var(--color-text-light)',
+            fontWeight: activeTab === 'pendaftaran' ? 600 : 400, cursor: 'pointer', transition: 'all 0.2s'
           }}
         >
           <Users size={18} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'text-bottom' }} />
-          Grup &amp; Roster
+          Pendaftaran &amp; Acak
         </button>
         <button 
-          onClick={() => setActiveTab('jadwal')}
+          onClick={() => setActiveTab('grupA')}
           style={{ flex: 1, minWidth: '120px', padding: '0.75rem', borderRadius: 'calc(var(--radius-md) - 4px)', border: 'none', 
-            background: activeTab === 'jadwal' ? '#ef4444' : 'transparent',
-            color: activeTab === 'jadwal' ? 'white' : 'var(--color-text-light)',
-            fontWeight: activeTab === 'jadwal' ? 600 : 400, cursor: 'pointer', transition: 'all 0.2s'
+            background: activeTab === 'grupA' ? '#ef4444' : 'transparent',
+            color: activeTab === 'grupA' ? 'white' : 'var(--color-text-light)',
+            fontWeight: activeTab === 'grupA' ? 600 : 400, cursor: 'pointer', transition: 'all 0.2s'
           }}
         >
-          <Calendar size={18} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'text-bottom' }} />
-          Fase Grup
+          <Flag size={18} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'text-bottom' }} />
+          Grup A 🇮🇩
         </button>
         <button 
-          onClick={() => setActiveTab('klasemen')}
+          onClick={() => setActiveTab('grupB')}
           style={{ flex: 1, minWidth: '120px', padding: '0.75rem', borderRadius: 'calc(var(--radius-md) - 4px)', border: 'none', 
-            background: activeTab === 'klasemen' ? '#ef4444' : 'transparent',
-            color: activeTab === 'klasemen' ? 'white' : 'var(--color-text-light)',
-            fontWeight: activeTab === 'klasemen' ? 600 : 400, cursor: 'pointer', transition: 'all 0.2s'
+            background: activeTab === 'grupB' ? '#ef4444' : 'transparent',
+            color: activeTab === 'grupB' ? 'white' : 'var(--color-text-light)',
+            fontWeight: activeTab === 'grupB' ? 600 : 400, cursor: 'pointer', transition: 'all 0.2s'
           }}
         >
-          <Trophy size={18} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'text-bottom' }} />
-          Klasemen Grup
+          <Flag size={18} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'text-bottom' }} />
+          Grup B 🇮🇩
         </button>
         <button 
           onClick={() => setActiveTab('knockout')}
@@ -623,277 +586,158 @@ export default function FTC17Agustus() {
 
       <div className="glass-panel" style={{ borderTop: '4px solid #ef4444' }}>
         
-        {/* SUBTAB 1: GRUP & ROSTER */}
-        {activeTab === 'tim' && (
+        {/* SUBTAB 1: PENDAFTARAN & ACAK */}
+        {activeTab === 'pendaftaran' && (
           <div className="flex flex-col gap-6">
-            {/* Split Screen for Group Assignments */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 style={{ color: 'white', margin: 0, fontSize: '1.25rem' }}>Pembagian Grup Turnamen (Maks 9 Tim)</h3>
-                <button onClick={autoSplitGroups} className="btn" style={{ background: '#ef4444', color: 'white', padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
-                  <Shuffle size={16} /> Acak Grup Otomatis
+            
+            {/* Top Row Action Panel */}
+            <div style={{ 
+              display: 'flex', flexWrap: 'wrap', gap: '1.5rem', justifyContent: 'space-between', alignItems: 'center',
+              background: 'rgba(255,255,255,0.03)', padding: '1.5rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.08)'
+            }}>
+              <div>
+                <h3 style={{ color: 'white', margin: 0, fontSize: '1.25rem' }}>Kontrol Turnamen 17 Agustus</h3>
+                <p style={{ color: 'var(--color-text-light)', margin: '0.25rem 0 0 0', fontSize: '0.85rem' }}>
+                  Daftarkan hingga 9 tim, acak pembagian Grup A/B, lalu buat jadwal pertandingan grup.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-light)' }}>Tanggal Jadwal:</span>
+                  <input 
+                    type="date" 
+                    className="input-field" 
+                    value={date} 
+                    onChange={(e) => setDate(e.target.value)}
+                    style={{ background: 'white', color: '#0f172a', padding: '0.5rem 0.75rem', borderRadius: '4px', fontSize: '0.85rem' }}
+                  />
+                </div>
+                <button 
+                  onClick={autoSplitGroups} 
+                  className="btn" 
+                  style={{ background: '#ef4444', color: 'white', alignSelf: 'flex-end', padding: '0.55rem 1.25rem', fontSize: '0.9rem' }}
+                >
+                  <Shuffle size={16} /> Acak Grup A/B
+                </button>
+                <button 
+                  onClick={generateGroupMatches} 
+                  className="btn" 
+                  style={{ background: 'white', color: '#0f172a', alignSelf: 'flex-end', padding: '0.55rem 1.25rem', fontSize: '0.9rem' }}
+                >
+                  <Calendar size={16} /> Buat Jadwal Pertandingan
                 </button>
               </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-                {/* Group A Panel */}
-                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <h4 style={{ color: 'white', margin: '0 0 0.75rem 0', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
-                    <span>GRUP A</span>
-                    <span style={{ color: '#ef4444' }}>{tournamentTeams.filter(t => t.group_name === 'A').length} Tim</span>
-                  </h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {tournamentTeams.filter(t => t.group_name === 'A').length === 0 ? (
-                      <p style={{ color: 'var(--color-text-light)', fontStyle: 'italic', fontSize: '0.85rem', margin: 0 }}>Belum ada tim.</p>
-                    ) : (
-                      tournamentTeams.filter(t => t.group_name === 'A').map(t => (
-                        <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.05)', padding: '0.5rem 0.75rem', borderRadius: '4px' }}>
-                          <span style={{ color: 'white', fontSize: '0.85rem', fontWeight: 600 }}>{getPairNameById(t.pair_id)}</span>
-                          <button onClick={() => unregisterFromTournament(t.pair_id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.75rem' }}>Keluarkan</button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Group B Panel */}
-                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <h4 style={{ color: 'white', margin: '0 0 0.75rem 0', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
-                    <span>GRUP B</span>
-                    <span style={{ color: '#ef4444' }}>{tournamentTeams.filter(t => t.group_name === 'B').length} Tim</span>
-                  </h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {tournamentTeams.filter(t => t.group_name === 'B').length === 0 ? (
-                      <p style={{ color: 'var(--color-text-light)', fontStyle: 'italic', fontSize: '0.85rem', margin: 0 }}>Belum ada tim.</p>
-                    ) : (
-                      tournamentTeams.filter(t => t.group_name === 'B').map(t => (
-                        <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.05)', padding: '0.5rem 0.75rem', borderRadius: '4px' }}>
-                          <span style={{ color: 'white', fontSize: '0.85rem', fontWeight: 600 }}>{getPairNameById(t.pair_id)}</span>
-                          <button onClick={() => unregisterFromTournament(t.pair_id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.75rem' }}>Keluarkan</button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
             </div>
 
-            <hr style={{ border: 'none', borderBottom: '1px solid rgba(255,255,255,0.1)', margin: 0 }} />
-
-            {/* Roster & Pair Registration */}
-            <div>
-              <h3 style={{ color: 'white', margin: '0 0 1rem 0', fontSize: '1.25rem' }}>Roster Tim Ganda</h3>
+            {/* Turnamen Teams and Roster Split */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', alignItems: 'start' }}>
               
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
-                {pairs.map(pair => {
-                  const reg = tournamentTeams.find(t => t.pair_id === pair.id)
-                  return (
-                    <div key={pair.id} style={{ 
-                      background: 'rgba(255,255,255,0.05)', padding: '1rem', 
-                      borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.1)',
-                      display: 'flex', flexDirection: 'column', gap: '0.75rem'
-                    }}>
-                      <div style={{ color: 'white', fontWeight: 600, fontSize: '0.95rem' }}>
-                        {getPlayerName(pair.player1_id)} &amp; {getPlayerName(pair.player2_id)}
+              {/* Left Column: Registered Tournament Teams (Max 9) */}
+              <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <h4 style={{ color: 'white', margin: '0 0 1rem 0', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
+                  <span>TIM TERDAFTAR TURNAMEN</span>
+                  <span style={{ color: '#ef4444' }}>{tournamentTeams.length} / 9 Tim</span>
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {tournamentTeams.length === 0 ? (
+                    <p style={{ color: 'var(--color-text-light)', fontStyle: 'italic', fontSize: '0.85rem', margin: '1rem 0' }}>Belum ada tim terdaftar. Daftarkan dari daftar Roster di kanan.</p>
+                  ) : (
+                    tournamentTeams.map((t, idx) => (
+                      <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.05)', padding: '0.75rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div>
+                          <span style={{ color: '#ef4444', fontWeight: 700, marginRight: '0.5rem', fontSize: '0.85rem' }}>#{idx + 1}</span>
+                          <span style={{ color: 'white', fontSize: '0.9rem', fontWeight: 600 }}>{getPairNameById(t.pair_id)}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.1)', color: 'white', padding: '2px 8px', borderRadius: '10px', fontWeight: 600 }}>
+                            Grup {t.group_name}
+                          </span>
+                          <button onClick={() => unregisterTeamFromTournament(t.pair_id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.75rem' }}>Hapus</button>
+                        </div>
                       </div>
-                      
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: 'auto' }}>
-                        <button 
-                          onClick={() => registerToGroup(pair.id, 'A')}
-                          className="btn" 
-                          style={{ flex: 1, padding: '4px 8px', fontSize: '0.75rem', background: reg?.group_name === 'A' ? '#ef4444' : 'rgba(255,255,255,0.1)', color: 'white' }}
-                        >
-                          {reg?.group_name === 'A' ? 'Grup A 🇮🇩' : 'Grup A'}
-                        </button>
-                        <button 
-                          onClick={() => registerToGroup(pair.id, 'B')}
-                          className="btn" 
-                          style={{ flex: 1, padding: '4px 8px', fontSize: '0.75rem', background: reg?.group_name === 'B' ? '#ef4444' : 'rgba(255,255,255,0.1)', color: 'white' }}
-                        >
-                          {reg?.group_name === 'B' ? 'Grup B 🇮🇩' : 'Grup B'}
-                        </button>
-                        <button 
-                          onClick={() => deletePair(pair.id)}
-                          style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
-                          title="Hapus Roster"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            <hr style={{ border: 'none', borderBottom: '1px solid rgba(255,255,255,0.1)', margin: 0 }} />
-
-            {/* Create new pair */}
-            <form onSubmit={addPair} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'rgba(255,255,255,0.05)', padding: '1.5rem', borderRadius: 'var(--radius-md)' }}>
-              <h3 style={{ margin: 0, color: 'white', fontSize: '1.1rem' }}>Tambah Pasangan Roster Baru</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--color-text-light)', marginBottom: '0.5rem' }}>Pemain 1</label>
-                  <select className="input-field" value={p1} onChange={e => setP1(e.target.value)} required>
-                    <option value="">-- Pilih Pemain --</option>
-                    {allPlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--color-text-light)', marginBottom: '0.5rem' }}>Pemain 2</label>
-                  <select className="input-field" value={p2} onChange={e => setP2(e.target.value)} required>
-                    <option value="">-- Pilih Pemain --</option>
-                    {allPlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
+                    ))
+                  )}
                 </div>
               </div>
-              <button type="submit" className="btn" style={{ alignSelf: 'flex-start', background: '#ef4444', color: 'white' }}>
-                <Plus size={18} /> Daftarkan ke Roster
-              </button>
-            </form>
 
-          </div>
-        )}
-
-        {/* SUBTAB 2: FASE GRUP JADWAL */}
-        {activeTab === 'jadwal' && (
-          <div className="flex flex-col gap-6">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <label style={{ display: 'block', color: 'var(--color-text-light)', marginBottom: '0.5rem' }}>Tanggal Pertandingan:</label>
-                <input 
-                  type="date" 
-                  className="input-field" 
-                  value={date} 
-                  onChange={(e) => setDate(e.target.value)}
-                  style={{ background: 'rgba(255,255,255,0.9)', color: '#0f172a' }}
-                />
-              </div>
-              <button onClick={() => generateGroupMatches()} className="btn" style={{ background: '#ef4444', color: 'white', marginTop: '1.5rem' }}>
-                <Shuffle size={18} /> Urutkan &amp; Buat Jadwal Fase Grup
-              </button>
-            </div>
-
-            {loading ? (
-              <p style={{ color: 'white' }}>Memuat data...</p>
-            ) : (
-              <div>
-                <h3 style={{ color: 'white', fontSize: '1.1rem', marginBottom: '1rem' }}>Daftar Antrean Penyisihan Grup</h3>
-                {displayGroupMatches.length === 0 ? (
-                  <p style={{ color: 'var(--color-text-light)', fontStyle: 'italic', fontSize: '0.9rem' }}>Belum ada antrean jadwal. Tekan tombol buat jadwal di atas.</p>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
-                    {displayGroupMatches.map((m, idx) => {
-                      const isScheduled = m.status === 'scheduled';
-                      const isOngoing = m.status === 'ongoing';
-                      const isCompleted = m.status === 'completed';
-                      
-                      const pair1 = getPairByPlayerIds(m.team1_player1_id, m.team1_player2_id)
-                      const tTeam = tournamentTeams.find(t => t.pair_id === pair1?.id)
-                      const groupLabel = tTeam ? `GRUP ${tTeam.group_name}` : 'GRUP';
-
+              {/* Right Column: Roster & Add New Pairs */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                
+                {/* Roster List to register to tournament */}
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <h4 style={{ color: 'white', margin: '0 0 1rem 0', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
+                    Pilih Roster Ganda untuk Turnamen
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '250px', overflowY: 'auto', paddingRight: '4px' }}>
+                    {pairs.map(pair => {
+                      const isRegistered = tournamentTeams.some(t => t.pair_id === pair.id)
                       return (
-                        <div key={m.id} style={{ 
-                          background: isOngoing ? 'rgba(239, 68, 68, 0.1)' : 'rgba(255,255,255,0.05)', 
-                          padding: '1rem', borderRadius: 'var(--radius-md)', 
-                          border: `1px solid ${isOngoing ? '#ef4444' : 'rgba(255,255,255,0.1)'}` 
-                        }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                            <div style={{ fontSize: '0.8rem', color: isCompleted ? 'gray' : '#ef4444', fontWeight: 600 }}>
-                              MATCH {idx + 1} • <span style={{ color: 'white', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '4px' }}>{groupLabel}</span>
-                            </div>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 600, color: isOngoing ? '#ef4444' : isCompleted ? 'gray' : 'white', background: isOngoing ? 'rgba(239, 68, 68, 0.2)' : 'transparent', padding: '2px 8px', borderRadius: '12px' }}>
-                              {isScheduled ? 'Menunggu' : isOngoing ? 'SEDANG MAIN' : 'Selesai'}
-                            </div>
-                          </div>
-                          
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: isCompleted ? 'gray' : 'white' }}>
-                            <div style={{ flex: 1, textAlign: 'right', fontWeight: m.winner_team === 1 ? 700 : 400, color: m.winner_team === 1 ? '#ef4444' : 'inherit' }}>
-                              {getPlayerName(m.team1_player1_id)}<br/>
-                              {getPlayerName(m.team1_player2_id)}
-                            </div>
-                            <div style={{ padding: '0 1rem', color: 'var(--color-text-light)', fontSize: '0.9rem', textAlign: 'center' }}>
-                              {isCompleted ? (
-                                <span style={{ fontSize: '1.2rem', fontWeight: 700, color: 'white' }}>{m.team1_score} - {m.team2_score}</span>
-                              ) : 'VS'}
-                            </div>
-                            <div style={{ flex: 1, textAlign: 'left', fontWeight: m.winner_team === 2 ? 700 : 400, color: m.winner_team === 2 ? '#ef4444' : 'inherit' }}>
-                              {getPlayerName(m.team2_player1_id)}<br/>
-                              {getPlayerName(m.team2_player2_id)}
-                            </div>
-                          </div>
-
-                          {/* Actions */}
-                          {isScheduled && (
+                        <div key={pair.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '4px' }}>
+                          <span style={{ color: 'white', fontSize: '0.85rem' }}>{getPairName(pair)}</span>
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            {isRegistered ? (
+                              <span style={{ fontSize: '0.75rem', color: '#34d399', fontWeight: 600 }}>Terdaftar</span>
+                            ) : (
+                              <button 
+                                onClick={() => registerTeamToTournament(pair.id)}
+                                className="btn"
+                                style={{ padding: '2px 8px', fontSize: '0.75rem', background: '#ef4444', color: 'white' }}
+                              >
+                                Daftarkan
+                              </button>
+                            )}
                             <button 
-                              onClick={() => setOngoing(m.id)}
-                              className="btn mt-3" style={{ width: '100%', padding: '0.5rem', fontSize: '0.9rem', background: 'white', color: '#0f172a' }}
+                              onClick={() => deletePairFromRoster(pair.id)}
+                              style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0 }}
                             >
-                              Mulai Main di Lapangan
+                              <Trash2 size={14} />
                             </button>
-                          )}
-
-                          {isOngoing && (
-                            <div className="mt-3 flex flex-col gap-3 border-t border-[rgba(255,255,255,0.1)] pt-3">
-                              <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', textAlign: 'center', display: 'block' }}>Pilih Pemenang Langsung:</span>
-                              <div className="flex gap-2 justify-center">
-                                <button 
-                                  onClick={() => quickCompleteMatch(m.id, 1)} 
-                                  className="btn" 
-                                  style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', background: '#ef4444', color: 'white', flex: 1 }}
-                                >
-                                  🏆 Tim 1 Menang
-                                </button>
-                                <button 
-                                  onClick={() => quickCompleteMatch(m.id, 2)} 
-                                  className="btn" 
-                                  style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', background: '#ef4444', color: 'white', flex: 1 }}
-                                >
-                                  🏆 Tim 2 Menang
-                                </button>
-                              </div>
-                              <div style={{ textAlign: 'center', color: 'gray', fontSize: '0.7rem' }}>— ATAU INPUT SKOR GAME —</div>
-                              <div className="flex gap-2 items-center justify-center">
-                                <input 
-                                  type="number" 
-                                  placeholder="0"
-                                  value={scoresInput[m.id]?.s1 || ''}
-                                  onChange={(e) => setScoresInput(prev => ({ ...prev, [m.id]: { ...prev[m.id], s1: e.target.value } }))}
-                                  style={{ width: '60px', padding: '0.5rem', textAlign: 'center', borderRadius: '4px', border: 'none', color: '#0f172a', fontWeight: 700 }}
-                                />
-                                <span style={{ color: 'white' }}>-</span>
-                                <input 
-                                  type="number" 
-                                  placeholder="0"
-                                  value={scoresInput[m.id]?.s2 || ''}
-                                  onChange={(e) => setScoresInput(prev => ({ ...prev, [m.id]: { ...prev[m.id], s2: e.target.value } }))}
-                                  style={{ width: '60px', padding: '0.5rem', textAlign: 'center', borderRadius: '4px', border: 'none', color: '#0f172a', fontWeight: 700 }}
-                                />
-                                <button onClick={() => completeMatch(m.id)} className="btn" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', marginLeft: '0.5rem', background: 'white', color: '#0f172a' }}>
-                                  Simpan
-                                </button>
-                              </div>
-                            </div>
-                          )}
-
+                          </div>
                         </div>
                       )
                     })}
                   </div>
-                )}
+                </div>
+
+                {/* Add new Roster pair form */}
+                <form onSubmit={addPairToRoster} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'rgba(255,255,255,0.05)', padding: '1.25rem', borderRadius: 'var(--radius-md)' }}>
+                  <h4 style={{ margin: 0, color: 'white', fontSize: '0.95rem' }}>Tambah Pasangan Roster Baru</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--color-text-light)', marginBottom: '0.25rem' }}>Pemain 1</label>
+                      <select className="input-field" value={p1} onChange={e => setP1(e.target.value)} required style={{ padding: '0.4rem', fontSize: '0.85rem' }}>
+                        <option value="">-- Pilih --</option>
+                        {allPlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--color-text-light)', marginBottom: '0.25rem' }}>Pemain 2</label>
+                      <select className="input-field" value={p2} onChange={e => setP2(e.target.value)} required style={{ padding: '0.4rem', fontSize: '0.85rem' }}>
+                        <option value="">-- Pilih --</option>
+                        {allPlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <button type="submit" className="btn" style={{ alignSelf: 'flex-start', background: '#ef4444', color: 'white', padding: '0.4rem 1rem', fontSize: '0.8rem' }}>
+                    <Plus size={16} /> Buat Pasangan
+                  </button>
+                </form>
+
               </div>
-            )}
+            </div>
+
           </div>
         )}
 
-        {/* SUBTAB 3: KLASEMEN GRUP */}
-        {activeTab === 'klasemen' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-            {/* Group A Standings */}
+        {/* SUBTAB 2: GRUP A */}
+        {activeTab === 'grupA' && (
+          <div className="flex flex-col gap-6">
+            
+            {/* Standings Group A */}
             <div>
-              <h3 style={{ color: 'white', fontSize: '1.25rem', marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
-                <span>KLASEMEN GRUP A</span>
-                <span style={{ color: '#ef4444', fontSize: '0.9rem' }}>Top 2 Lolos Semifinal</span>
+              <h3 style={{ color: 'white', fontSize: '1.25rem', marginBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
+                Klasemen Grup A
               </h3>
               
               {standingsA.length === 0 ? (
@@ -944,11 +788,121 @@ export default function FTC17Agustus() {
               )}
             </div>
 
-            {/* Group B Standings */}
+            {/* Match Schedule Group A */}
             <div>
-              <h3 style={{ color: 'white', fontSize: '1.25rem', marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
-                <span>KLASEMEN GRUP B</span>
-                <span style={{ color: '#ef4444', fontSize: '0.9rem' }}>Top 2 Lolos Semifinal</span>
+              <h3 style={{ color: 'white', fontSize: '1.25rem', marginBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
+                Jadwal Pertandingan Grup A
+              </h3>
+              {groupAMatches.length === 0 ? (
+                <p style={{ color: 'var(--color-text-light)', fontStyle: 'italic', fontSize: '0.9rem' }}>Belum ada jadwal pertandingan untuk Grup A. Generate jadwal di tab Pendaftaran.</p>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
+                  {groupAMatches.map((m, idx) => {
+                    const isScheduled = m.status === 'scheduled';
+                    const isOngoing = m.status === 'ongoing';
+                    const isCompleted = m.status === 'completed';
+
+                    return (
+                      <div key={m.id} style={{ 
+                        background: isOngoing ? 'rgba(239, 68, 68, 0.1)' : 'rgba(255,255,255,0.05)', 
+                        padding: '1rem', borderRadius: 'var(--radius-md)', 
+                        border: `1px solid ${isOngoing ? '#ef4444' : 'rgba(255,255,255,0.1)'}` 
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                          <div style={{ fontSize: '0.8rem', color: '#ef4444', fontWeight: 600 }}>
+                            PERTANDINGAN {idx + 1}
+                          </div>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: isOngoing ? '#ef4444' : isCompleted ? 'gray' : 'white', background: isOngoing ? 'rgba(239, 68, 68, 0.2)' : 'transparent', padding: '2px 8px', borderRadius: '12px' }}>
+                            {isScheduled ? 'Menunggu' : isOngoing ? 'SEDANG MAIN' : 'Selesai'}
+                          </div>
+                        </div>
+                        
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: isCompleted ? 'gray' : 'white' }}>
+                          <div style={{ flex: 1, textAlign: 'right', fontWeight: m.winner_team === 1 ? 700 : 400, color: m.winner_team === 1 ? '#ef4444' : 'inherit' }}>
+                            {getPlayerName(m.team1_player1_id)}<br/>
+                            {getPlayerName(m.team1_player2_id)}
+                          </div>
+                          <div style={{ padding: '0 1rem', color: 'var(--color-text-light)', fontSize: '0.9rem', textAlign: 'center' }}>
+                            {isCompleted ? (
+                              <span style={{ fontSize: '1.2rem', fontWeight: 700, color: 'white' }}>{m.team1_score} - {m.team2_score}</span>
+                            ) : 'VS'}
+                          </div>
+                          <div style={{ flex: 1, textAlign: 'left', fontWeight: m.winner_team === 2 ? 700 : 400, color: m.winner_team === 2 ? '#ef4444' : 'inherit' }}>
+                            {getPlayerName(m.team2_player1_id)}<br/>
+                            {getPlayerName(m.team2_player2_id)}
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        {isScheduled && (
+                          <button 
+                            onClick={() => setOngoing(m.id)}
+                            className="btn mt-3" style={{ width: '100%', padding: '0.5rem', fontSize: '0.9rem', background: 'white', color: '#0f172a' }}
+                          >
+                            Mulai Main di Lapangan
+                          </button>
+                        )}
+
+                        {isOngoing && (
+                          <div className="mt-3 flex flex-col gap-3 border-t border-[rgba(255,255,255,0.1)] pt-3">
+                            <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', textAlign: 'center', display: 'block' }}>Pilih Pemenang Langsung:</span>
+                            <div className="flex gap-2 justify-center">
+                              <button 
+                                onClick={() => quickCompleteMatch(m.id, 1)} 
+                                className="btn" 
+                                style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', background: '#ef4444', color: 'white', flex: 1 }}
+                              >
+                                🏆 Tim 1 Menang
+                              </button>
+                              <button 
+                                onClick={() => quickCompleteMatch(m.id, 2)} 
+                                className="btn" 
+                                style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', background: '#ef4444', color: 'white', flex: 1 }}
+                              >
+                                🏆 Tim 2 Menang
+                              </button>
+                            </div>
+                            <div style={{ textAlign: 'center', color: 'gray', fontSize: '0.7rem' }}>— ATAU INPUT SKOR GAME —</div>
+                            <div className="flex gap-2 items-center justify-center">
+                              <input 
+                                type="number" 
+                                placeholder="0"
+                                value={scoresInput[m.id]?.s1 || ''}
+                                onChange={(e) => setScoresInput(prev => ({ ...prev, [m.id]: { ...prev[m.id], s1: e.target.value } }))}
+                                style={{ width: '60px', padding: '0.5rem', textAlign: 'center', borderRadius: '4px', border: 'none', color: '#0f172a', fontWeight: 700 }}
+                              />
+                              <span style={{ color: 'white' }}>-</span>
+                              <input 
+                                type="number" 
+                                placeholder="0"
+                                value={scoresInput[m.id]?.s2 || ''}
+                                onChange={(e) => setScoresInput(prev => ({ ...prev, [m.id]: { ...prev[m.id], s2: e.target.value } }))}
+                                style={{ width: '60px', padding: '0.5rem', textAlign: 'center', borderRadius: '4px', border: 'none', color: '#0f172a', fontWeight: 700 }}
+                              />
+                              <button onClick={() => completeMatch(m.id)} className="btn" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', marginLeft: '0.5rem', background: 'white', color: '#0f172a' }}>
+                                Simpan
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+          </div>
+        )}
+
+        {/* SUBTAB 3: GRUP B */}
+        {activeTab === 'grupB' && (
+          <div className="flex flex-col gap-6">
+            
+            {/* Standings Group B */}
+            <div>
+              <h3 style={{ color: 'white', fontSize: '1.25rem', marginBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
+                Klasemen Grup B
               </h3>
               
               {standingsB.length === 0 ? (
@@ -998,12 +952,118 @@ export default function FTC17Agustus() {
                 </div>
               )}
             </div>
+
+            {/* Match Schedule Group B */}
+            <div>
+              <h3 style={{ color: 'white', fontSize: '1.25rem', marginBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
+                Jadwal Pertandingan Grup B
+              </h3>
+              {groupBMatches.length === 0 ? (
+                <p style={{ color: 'var(--color-text-light)', fontStyle: 'italic', fontSize: '0.9rem' }}>Belum ada jadwal pertandingan untuk Grup B. Generate jadwal di tab Pendaftaran.</p>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
+                  {groupBMatches.map((m, idx) => {
+                    const isScheduled = m.status === 'scheduled';
+                    const isOngoing = m.status === 'ongoing';
+                    const isCompleted = m.status === 'completed';
+
+                    return (
+                      <div key={m.id} style={{ 
+                        background: isOngoing ? 'rgba(239, 68, 68, 0.1)' : 'rgba(255,255,255,0.05)', 
+                        padding: '1rem', borderRadius: 'var(--radius-md)', 
+                        border: `1px solid ${isOngoing ? '#ef4444' : 'rgba(255,255,255,0.1)'}` 
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                          <div style={{ fontSize: '0.8rem', color: '#ef4444', fontWeight: 600 }}>
+                            PERTANDINGAN {idx + 1}
+                          </div>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: isOngoing ? '#ef4444' : isCompleted ? 'gray' : 'white', background: isOngoing ? 'rgba(239, 68, 68, 0.2)' : 'transparent', padding: '2px 8px', borderRadius: '12px' }}>
+                            {isScheduled ? 'Menunggu' : isOngoing ? 'SEDANG MAIN' : 'Selesai'}
+                          </div>
+                        </div>
+                        
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: isCompleted ? 'gray' : 'white' }}>
+                          <div style={{ flex: 1, textAlign: 'right', fontWeight: m.winner_team === 1 ? 700 : 400, color: m.winner_team === 1 ? '#ef4444' : 'inherit' }}>
+                            {getPlayerName(m.team1_player1_id)}<br/>
+                            {getPlayerName(m.team1_player2_id)}
+                          </div>
+                          <div style={{ padding: '0 1rem', color: 'var(--color-text-light)', fontSize: '0.9rem', textAlign: 'center' }}>
+                            {isCompleted ? (
+                              <span style={{ fontSize: '1.2rem', fontWeight: 700, color: 'white' }}>{m.team1_score} - {m.team2_score}</span>
+                            ) : 'VS'}
+                          </div>
+                          <div style={{ flex: 1, textAlign: 'left', fontWeight: m.winner_team === 2 ? 700 : 400, color: m.winner_team === 2 ? '#ef4444' : 'inherit' }}>
+                            {getPlayerName(m.team2_player1_id)}<br/>
+                            {getPlayerName(m.team2_player2_id)}
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        {isScheduled && (
+                          <button 
+                            onClick={() => setOngoing(m.id)}
+                            className="btn mt-3" style={{ width: '100%', padding: '0.5rem', fontSize: '0.9rem', background: 'white', color: '#0f172a' }}
+                          >
+                            Mulai Main di Lapangan
+                          </button>
+                        )}
+
+                        {isOngoing && (
+                          <div className="mt-3 flex flex-col gap-3 border-t border-[rgba(255,255,255,0.1)] pt-3">
+                            <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', textAlign: 'center', display: 'block' }}>Pilih Pemenang Langsung:</span>
+                            <div className="flex gap-2 justify-center">
+                              <button 
+                                onClick={() => quickCompleteMatch(m.id, 1)} 
+                                className="btn" 
+                                style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', background: '#ef4444', color: 'white', flex: 1 }}
+                              >
+                                🏆 Tim 1 Menang
+                              </button>
+                              <button 
+                                onClick={() => quickCompleteMatch(m.id, 2)} 
+                                className="btn" 
+                                style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', background: '#ef4444', color: 'white', flex: 1 }}
+                              >
+                                🏆 Tim 2 Menang
+                              </button>
+                            </div>
+                            <div style={{ textAlign: 'center', color: 'gray', fontSize: '0.7rem' }}>— ATAU INPUT SKOR GAME —</div>
+                            <div className="flex gap-2 items-center justify-center">
+                              <input 
+                                type="number" 
+                                placeholder="0"
+                                value={scoresInput[m.id]?.s1 || ''}
+                                onChange={(e) => setScoresInput(prev => ({ ...prev, [m.id]: { ...prev[m.id], s1: e.target.value } }))}
+                                style={{ width: '60px', padding: '0.5rem', textAlign: 'center', borderRadius: '4px', border: 'none', color: '#0f172a', fontWeight: 700 }}
+                              />
+                              <span style={{ color: 'white' }}>-</span>
+                              <input 
+                                type="number" 
+                                placeholder="0"
+                                value={scoresInput[m.id]?.s2 || ''}
+                                onChange={(e) => setScoresInput(prev => ({ ...prev, [m.id]: { ...prev[m.id], s2: e.target.value } }))}
+                                style={{ width: '60px', padding: '0.5rem', textAlign: 'center', borderRadius: '4px', border: 'none', color: '#0f172a', fontWeight: 700 }}
+                              />
+                              <button onClick={() => completeMatch(m.id)} className="btn" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', marginLeft: '0.5rem', background: 'white', color: '#0f172a' }}>
+                                Simpan
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
           </div>
         )}
 
         {/* SUBTAB 4: FASE GUGUR */}
         {activeTab === 'knockout' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            
             {/* Generate Knockouts header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ color: 'white', margin: 0, fontSize: '1.25rem' }}>Bagan Putaran Gugur</h3>

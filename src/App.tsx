@@ -5,6 +5,7 @@ import Players from './pages/Players'
 import RandomDoubles from './pages/RandomDoubles'
 import FixedDoubles from './pages/FixedDoubles'
 import Singles from './pages/Singles'
+import FTC17Agustus from './pages/FTC17Agustus'
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
           <Route path="random-doubles" element={<RandomDoubles />} />
           <Route path="fixed-doubles" element={<FixedDoubles />} />
           <Route path="singles" element={<Singles />} />
+          <Route path="ftc-17-agustus" element={<FTC17Agustus />} />
         </Route>
       </Routes>
     </BrowserRouter>

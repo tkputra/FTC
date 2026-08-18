@@ -23,7 +23,7 @@ type Match = {
 
 export default function Home() {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [activePreviewTab, setActivePreviewTab] = useState<'random_doubles' | 'fixed_doubles' | 'singles'>('random_doubles');
+  const [activePreviewTab, setActivePreviewTab] = useState<'random_doubles' | 'fixed_doubles' | 'singles' | 'ftc_17_agustus'>('random_doubles');
   
   const [players, setPlayers] = useState<Player[]>([]);
   const [pairs, setPairs] = useState<FixedPair[]>([]);
@@ -96,7 +96,7 @@ export default function Home() {
     const completed = allMatches.filter(m => m.match_type === activePreviewTab && m.status === 'completed')
     const points = new Map<string, number>()
 
-    if (activePreviewTab === 'fixed_doubles') {
+    if (activePreviewTab === 'fixed_doubles' || activePreviewTab === 'ftc_17_agustus') {
       completed.forEach(m => {
         const getPairId = (id1: string, id2: string) => {
           const pair = pairs.find(p => (p.player1_id === id1 && p.player2_id === id2) || (p.player1_id === id2 && p.player2_id === id1))
@@ -232,6 +232,16 @@ export default function Home() {
             }}
           >
             Tunggal
+          </button>
+          <button 
+            onClick={() => setActivePreviewTab('ftc_17_agustus')}
+            style={{ flex: 1, minWidth: '100px', padding: '0.75rem', borderRadius: 'calc(var(--radius-md) - 4px)', border: 'none', 
+              background: activePreviewTab === 'ftc_17_agustus' ? '#ef4444' : 'transparent',
+              color: activePreviewTab === 'ftc_17_agustus' ? 'white' : 'var(--color-text-light)',
+              fontWeight: activePreviewTab === 'ftc_17_agustus' ? 600 : 400, cursor: 'pointer', transition: 'all 0.2s'
+            }}
+          >
+            17 Agustus
           </button>
         </div>
 

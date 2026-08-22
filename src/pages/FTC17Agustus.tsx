@@ -355,6 +355,25 @@ export default function FTC17Agustus() {
     points: number;
   }
 
+  function checkGroupTies(standings: StandingEntry[]): string[] {
+    if (standings.length < 2) return [];
+    const ties: string[] = [];
+    
+    // Skenario A: Peringkat 1 dan Peringkat 2 seri
+    if (standings[0].points === standings[1].points && standings[0].diff === standings[1].diff) {
+      ties.push(`Play-off diperlukan antara "${standings[0].name}" dan "${standings[1].name}" untuk menentukan Juara & Runner-up Grup.`);
+    }
+    
+    // Skenario B: Peringkat 2 dan Peringkat 3 seri
+    if (standings.length >= 3) {
+      if (standings[1].points === standings[2].points && standings[1].diff === standings[2].diff) {
+        ties.push(`Play-off diperlukan antara "${standings[1].name}" dan "${standings[2].name}" untuk menentukan peringkat ke-2 yang lolos ke Semi Final.`);
+      }
+    }
+    
+    return ties;
+  }
+
   function getGroupStandings(groupName: 'A' | 'B'): StandingEntry[] {
     const groupTeamIds = new Set(tournamentTeams.filter(t => t.group_name === groupName).map(t => t.pair_id))
     
@@ -769,6 +788,26 @@ export default function FTC17Agustus() {
               <h3 style={{ color: 'white', fontSize: '1.25rem', marginBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
                 Klasemen Grup A
               </h3>
+
+              {checkGroupTies(standingsA).map((tieMsg, idx) => (
+                <div key={idx} style={{
+                  background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
+                  color: 'white',
+                  padding: '0.75rem 1rem',
+                  borderRadius: 'var(--radius-sm)',
+                  marginBottom: '1rem',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}>
+                  <span>⚠️</span>
+                  <span>{tieMsg}</span>
+                </div>
+              ))}
               
               {standingsA.length === 0 ? (
                 <p style={{ color: 'var(--color-text-light)', fontStyle: 'italic', fontSize: '0.9rem' }}>Belum ada tim terdaftar di Grup A.</p>
@@ -975,6 +1014,26 @@ export default function FTC17Agustus() {
               <h3 style={{ color: 'white', fontSize: '1.25rem', marginBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
                 Klasemen Grup B
               </h3>
+
+              {checkGroupTies(standingsB).map((tieMsg, idx) => (
+                <div key={idx} style={{
+                  background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
+                  color: 'white',
+                  padding: '0.75rem 1rem',
+                  borderRadius: 'var(--radius-sm)',
+                  marginBottom: '1rem',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}>
+                  <span>⚠️</span>
+                  <span>{tieMsg}</span>
+                </div>
+              ))}
               
               {standingsB.length === 0 ? (
                 <p style={{ color: 'var(--color-text-light)', fontStyle: 'italic', fontSize: '0.9rem' }}>Belum ada tim terdaftar di Grup B.</p>

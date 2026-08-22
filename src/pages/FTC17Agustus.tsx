@@ -33,6 +33,8 @@ export default function FTC17Agustus() {
   const [tournamentTeams, setTournamentTeams] = useState<GroupTeam[]>([])
   const [matches, setMatches] = useState<Match[]>([])
   const [scoresInput, setScoresInput] = useState<Record<string, { s1: string, s2: string }>>({})
+  const [editingMatchId, setEditingMatchId] = useState<string | null>(null)
+  const [editScores, setEditScores] = useState<{ s1: string; s2: string }>({ s1: '', s2: '' })
 
   // Roster add state
   const [p1, setP1] = useState('')
@@ -242,6 +244,34 @@ export default function FTC17Agustus() {
     
     if (error) alert('Gagal menyimpan hasil: ' + error.message)
     else fetchData()
+  }
+
+  async function saveEditedScore(matchId: string) {
+    const s1 = parseInt(editScores.s1)
+    const s2 = parseInt(editScores.s2)
+
+    if (isNaN(s1) || isNaN(s2)) {
+      alert('Mohon masukkan skor yang valid (angka).')
+      return
+    }
+    if (s1 === s2) {
+      alert('Pertandingan tidak boleh seri. Harus ada pemenang.')
+      return
+    }
+
+    const winnerTeam = s1 > s2 ? 1 : 2;
+    const { error } = await supabase.from('matches').update({ 
+      team1_score: s1,
+      team2_score: s2,
+      winner_team: winnerTeam
+    }).eq('id', matchId)
+    
+    if (error) {
+      alert('Gagal mengedit skor: ' + error.message)
+    } else {
+      setEditingMatchId(null)
+      fetchData()
+    }
   }
 
   // Buat Jadwal Pertandingan (Round Robin)
@@ -885,6 +915,47 @@ export default function FTC17Agustus() {
                             </div>
                           </div>
                         )}
+
+                        {isCompleted && editingMatchId !== m.id && (
+                          <button 
+                            onClick={() => {
+                              setEditingMatchId(m.id);
+                              setEditScores({ s1: String(m.team1_score || 0), s2: String(m.team2_score || 0) });
+                            }}
+                            className="btn mt-3" style={{ width: '100%', padding: '0.4rem', fontSize: '0.8rem', background: 'rgba(255,255,255,0.1)', color: 'white' }}
+                          >
+                            ✏️ Edit Skor
+                          </button>
+                        )}
+
+                        {isCompleted && editingMatchId === m.id && (
+                          <div className="mt-3 flex flex-col gap-2 border-t border-[rgba(255,255,255,0.1)] pt-3">
+                            <span style={{ fontSize: '0.8rem', color: 'white', textAlign: 'center' }}>Edit Skor Akhir:</span>
+                            <div className="flex gap-2 items-center justify-center">
+                              <input 
+                                type="number" 
+                                placeholder="0"
+                                value={editScores.s1}
+                                onChange={(e) => setEditScores(prev => ({ ...prev, s1: e.target.value }))}
+                                style={{ width: '60px', padding: '0.5rem', textAlign: 'center', borderRadius: '4px', border: 'none', color: '#0f172a', fontWeight: 700 }}
+                              />
+                              <span style={{ color: 'white' }}>-</span>
+                              <input 
+                                type="number" 
+                                placeholder="0"
+                                value={editScores.s2}
+                                onChange={(e) => setEditScores(prev => ({ ...prev, s2: e.target.value }))}
+                                style={{ width: '60px', padding: '0.5rem', textAlign: 'center', borderRadius: '4px', border: 'none', color: '#0f172a', fontWeight: 700 }}
+                              />
+                              <button onClick={() => saveEditedScore(m.id)} className="btn" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', marginLeft: '0.5rem', background: '#ef4444', color: 'white' }}>
+                                Simpan
+                              </button>
+                              <button onClick={() => setEditingMatchId(null)} className="btn" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', background: 'rgba(255,255,255,0.1)', color: 'white' }}>
+                                Batal
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
@@ -1050,6 +1121,47 @@ export default function FTC17Agustus() {
                             </div>
                           </div>
                         )}
+
+                        {isCompleted && editingMatchId !== m.id && (
+                          <button 
+                            onClick={() => {
+                              setEditingMatchId(m.id);
+                              setEditScores({ s1: String(m.team1_score || 0), s2: String(m.team2_score || 0) });
+                            }}
+                            className="btn mt-3" style={{ width: '100%', padding: '0.4rem', fontSize: '0.8rem', background: 'rgba(255,255,255,0.1)', color: 'white' }}
+                          >
+                            ✏️ Edit Skor
+                          </button>
+                        )}
+
+                        {isCompleted && editingMatchId === m.id && (
+                          <div className="mt-3 flex flex-col gap-2 border-t border-[rgba(255,255,255,0.1)] pt-3">
+                            <span style={{ fontSize: '0.8rem', color: 'white', textAlign: 'center' }}>Edit Skor Akhir:</span>
+                            <div className="flex gap-2 items-center justify-center">
+                              <input 
+                                type="number" 
+                                placeholder="0"
+                                value={editScores.s1}
+                                onChange={(e) => setEditScores(prev => ({ ...prev, s1: e.target.value }))}
+                                style={{ width: '60px', padding: '0.5rem', textAlign: 'center', borderRadius: '4px', border: 'none', color: '#0f172a', fontWeight: 700 }}
+                              />
+                              <span style={{ color: 'white' }}>-</span>
+                              <input 
+                                type="number" 
+                                placeholder="0"
+                                value={editScores.s2}
+                                onChange={(e) => setEditScores(prev => ({ ...prev, s2: e.target.value }))}
+                                style={{ width: '60px', padding: '0.5rem', textAlign: 'center', borderRadius: '4px', border: 'none', color: '#0f172a', fontWeight: 700 }}
+                              />
+                              <button onClick={() => saveEditedScore(m.id)} className="btn" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', marginLeft: '0.5rem', background: '#ef4444', color: 'white' }}>
+                                Simpan
+                              </button>
+                              <button onClick={() => setEditingMatchId(null)} className="btn" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', background: 'rgba(255,255,255,0.1)', color: 'white' }}>
+                                Batal
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
@@ -1162,6 +1274,47 @@ export default function FTC17Agustus() {
                               Mulai Pertandingan
                             </button>
                           )}
+
+                          {isCompleted && editingMatchId !== m.id && (
+                            <button 
+                              onClick={() => {
+                                setEditingMatchId(m.id);
+                                setEditScores({ s1: String(m.team1_score || 0), s2: String(m.team2_score || 0) });
+                              }}
+                              className="btn mt-3" style={{ width: '100%', padding: '0.4rem', fontSize: '0.8rem', background: 'rgba(255,255,255,0.1)', color: 'white' }}
+                            >
+                              ✏️ Edit Skor
+                            </button>
+                          )}
+
+                          {isCompleted && editingMatchId === m.id && (
+                            <div className="mt-3 flex flex-col gap-2 border-t border-[rgba(255,255,255,0.1)] pt-3">
+                              <span style={{ fontSize: '0.8rem', color: 'white', textAlign: 'center' }}>Edit Skor Akhir:</span>
+                              <div className="flex gap-2 items-center justify-center">
+                                <input 
+                                  type="number" 
+                                  placeholder="0"
+                                  value={editScores.s1}
+                                  onChange={(e) => setEditScores(prev => ({ ...prev, s1: e.target.value }))}
+                                  style={{ width: '60px', padding: '0.5rem', textAlign: 'center', borderRadius: '4px', border: 'none', color: '#0f172a', fontWeight: 700 }}
+                                />
+                                <span style={{ color: 'white' }}>-</span>
+                                <input 
+                                  type="number" 
+                                  placeholder="0"
+                                  value={editScores.s2}
+                                  onChange={(e) => setEditScores(prev => ({ ...prev, s2: e.target.value }))}
+                                  style={{ width: '60px', padding: '0.5rem', textAlign: 'center', borderRadius: '4px', border: 'none', color: '#0f172a', fontWeight: 700 }}
+                                />
+                                <button onClick={() => saveEditedScore(m.id)} className="btn" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', marginLeft: '0.5rem', background: '#ef4444', color: 'white' }}>
+                                  Simpan
+                                </button>
+                                <button onClick={() => setEditingMatchId(null)} className="btn" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', background: 'rgba(255,255,255,0.1)', color: 'white' }}>
+                                  Batal
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )
                     })}
@@ -1270,6 +1423,47 @@ export default function FTC17Agustus() {
                           <button onClick={() => setOngoing(m.id)} className="btn mt-3" style={{ width: '100%', padding: '0.5rem', background: '#ef4444', color: 'white' }}>
                             Mulai Final Kemerdekaan
                           </button>
+                        )}
+
+                        {isCompleted && editingMatchId !== m.id && (
+                          <button 
+                            onClick={() => {
+                              setEditingMatchId(m.id);
+                              setEditScores({ s1: String(m.team1_score || 0), s2: String(m.team2_score || 0) });
+                            }}
+                            className="btn mt-3" style={{ width: '100%', padding: '0.4rem', fontSize: '0.8rem', background: 'rgba(255,255,255,0.1)', color: 'white' }}
+                          >
+                            ✏️ Edit Skor
+                          </button>
+                        )}
+
+                        {isCompleted && editingMatchId === m.id && (
+                          <div className="mt-3 flex flex-col gap-2 border-t border-[rgba(255,255,255,0.1)] pt-3">
+                            <span style={{ fontSize: '0.8rem', color: 'white', textAlign: 'center' }}>Edit Skor Akhir:</span>
+                            <div className="flex gap-2 items-center justify-center">
+                              <input 
+                                type="number" 
+                                placeholder="0"
+                                value={editScores.s1}
+                                onChange={(e) => setEditScores(prev => ({ ...prev, s1: e.target.value }))}
+                                style={{ width: '60px', padding: '0.5rem', textAlign: 'center', borderRadius: '4px', border: 'none', color: '#0f172a', fontWeight: 700 }}
+                              />
+                              <span style={{ color: 'white' }}>-</span>
+                              <input 
+                                type="number" 
+                                placeholder="0"
+                                value={editScores.s2}
+                                onChange={(e) => setEditScores(prev => ({ ...prev, s2: e.target.value }))}
+                                style={{ width: '60px', padding: '0.5rem', textAlign: 'center', borderRadius: '4px', border: 'none', color: '#0f172a', fontWeight: 700 }}
+                              />
+                              <button onClick={() => saveEditedScore(m.id)} className="btn" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', marginLeft: '0.5rem', background: '#ef4444', color: 'white' }}>
+                                Simpan
+                              </button>
+                              <button onClick={() => setEditingMatchId(null)} className="btn" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', background: 'rgba(255,255,255,0.1)', color: 'white' }}>
+                                Batal
+                              </button>
+                            </div>
+                          </div>
                         )}
                       </div>
                     )

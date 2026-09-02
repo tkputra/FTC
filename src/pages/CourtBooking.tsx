@@ -214,13 +214,22 @@ export default function CourtBooking() {
           {/* Target Jam Box */}
           <div style={{ background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.1)' }}>
             <div className="flex items-center justify-between mb-2">
-              <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', fontWeight: 600, textTransform: 'uppercase' }}>Target Jam</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', fontWeight: 600, textTransform: 'uppercase' }}>Target Jam (8 Slot)</span>
               <span style={{ fontSize: '0.75rem', color: '#facc15', fontWeight: 700, background: 'rgba(250, 204, 21, 0.15)', padding: '2px 8px', borderRadius: '12px' }}>
-                Pagi & Sore
+                Pagi & Sore/Malam
               </span>
             </div>
-            <div style={{ color: 'white', fontSize: '0.8rem', lineHeight: '1.4' }}>
-              <span style={{ color: '#34d399', fontWeight: 600 }}>06-09 AM</span> & <span style={{ color: '#f97316', fontWeight: 600 }}>04-07 PM</span> (Sen-Kam)
+            <div className="flex flex-wrap gap-1 mt-1">
+              {['06:00', '07:00', '08:00', '09:00'].map(h => (
+                <span key={h} style={{ fontSize: '0.75rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: 'rgba(52, 211, 153, 0.2)', color: '#34d399' }}>
+                  {h}
+                </span>
+              ))}
+              {['16:00', '17:00', '18:00', '19:00'].map(h => (
+                <span key={h} style={{ fontSize: '0.75rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: 'rgba(249, 115, 22, 0.2)', color: '#f97316' }}>
+                  {h}
+                </span>
+              ))}
             </div>
           </div>
 
@@ -488,6 +497,43 @@ export default function CourtBooking() {
                   required 
                 />
               </div>
+            </div>
+
+            {/* Target Hours Indicator */}
+            <div>
+              <label style={{ display: 'block', color: 'var(--color-text-light)', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
+                Slot Jam Target Pemesanan (Pagi: 06-09, Sore/Malam: 16-19):
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: '06:00 (6 AM)', value: '6:00am', color: '#34d399' },
+                  { label: '07:00 (7 AM)', value: '7:00am', color: '#34d399' },
+                  { label: '08:00 (8 AM)', value: '8:00am', color: '#34d399' },
+                  { label: '09:00 (9 AM)', value: '9:00am', color: '#34d399' },
+                  { label: '16:00 (4 PM)', value: '4:00pm', color: '#f97316' },
+                  { label: '17:00 (5 PM)', value: '5:00pm', color: '#f97316' },
+                  { label: '18:00 (6 PM)', value: '6:00pm', color: '#f97316' },
+                  { label: '19:00 (7 PM)', value: '7:00pm', color: '#f97316' }
+                ].map(item => (
+                  <span 
+                    key={item.value} 
+                    style={{ 
+                      padding: '6px 12px', 
+                      borderRadius: 'var(--radius-sm)', 
+                      background: 'rgba(255,255,255,0.06)', 
+                      border: `1px solid ${item.color}40`, 
+                      color: item.color,
+                      fontSize: '0.85rem',
+                      fontWeight: 600
+                    }}
+                  >
+                    ✓ {item.label}
+                  </span>
+                ))}
+              </div>
+              <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-light)', fontSize: '0.75rem' }}>
+                *Bot akan memprioritaskan slot pagi (06:00 - 09:00) dan sore/malam (16:00 - 19:00) pada hari Senin s/d Kamis.
+              </p>
             </div>
 
             <button 

@@ -1,16 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Calendar, Clock, Mail, CheckCircle2, RefreshCw, ExternalLink, Settings, ShieldCheck, CalendarDays, Check } from 'lucide-react';
+import { Calendar, Clock, Mail, CheckCircle2, RefreshCw, ExternalLink, Settings, ShieldCheck, User, Users, Plus, Edit2, Trash2, Check, Sparkles, Phone, MapPin } from 'lucide-react';
 
-interface BookingSettings {
-  id?: number;
+interface BookingAccount {
+  id?: string;
+  first_name: string;
+  last_name: string;
   email_prefix: string;
   email_domain: string;
   current_email_index: number;
-  first_name: string;
-  last_name: string;
   address: string;
   phone: string;
+  is_active: boolean;
+  total_bookings: number;
+  last_booked_at?: string | null;
+  created_at?: string;
+}
+
+interface MasterSettings {
+  id?: number;
   target_hours: string[];
   target_days: string[];
   is_active: boolean;
@@ -36,27 +44,37 @@ interface BookedCourt {
 const GOOGLE_CALENDAR_URL = 'https://calendar.app.google/iueH4Lnt6qsCgVmZ6';
 
 export default function CourtBooking() {
-  const [settings, setSettings] = useState<BookingSettings>({
-    email_prefix: 'tri.kartika.putra',
-    email_domain: 'gmail.com',
-    current_email_index: 2,
-    first_name: 'Tri',
-    last_name: 'Putra',
-    address: 'Fortune spring Blok D2 - J05',
-    phone: '08111819112',
+  const [settings, setSettings] = useState<MasterSettings>({
     target_hours: ['6:00am', '7:00am', '8:00am', '9:00am', '4:00pm', '5:00pm', '6:00pm', '7:00pm'],
     target_days: ['Mon', 'Tue', 'Wed', 'Thu'],
     is_active: true,
     last_check_message: 'Sistem siap memantau jadwal'
   });
 
+  const [accounts, setAccounts] = useState<BookingAccount[]>([]);
   const [bookedCourts, setBookedCourts] = useState<BookedCourt[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'bookings' | 'settings'>('bookings');
+  const [activeTab, setActiveTab] = useState<'bookings' | 'accounts' | 'settings'>('bookings');
 
-  // Form State for settings edit
-  const [formData, setFormData] = useState<BookingSettings>(settings);
+  // Modal State for Add/Edit Member Account
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [accountFormData, setAccountFormData] = useState<BookingAccount>({
+    first_name: '',
+    last_name: '',
+    email_prefix: '',
+    email_domain: 'gmail.com',
+    current_email_index: 1,
+    address: 'Fortune spring Blok ',
+    phone: '08',
+    is_active: true,
+    total_bookings: 0
+  });
+  const [isSavingAccount, setIsSavingAccount] = useState(false);
+
+  // Master Settings Form State
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
@@ -66,7 +84,7 @@ export default function CourtBooking() {
   async function fetchData() {
     setIsLoading(true);
     try {
-      // 1. Fetch Settings
+      // 1. Fetch Master Settings
       const { data: settingsData } = await supabase
         .from('court_booking_settings')
         .select('*')
@@ -75,10 +93,19 @@ export default function CourtBooking() {
 
       if (settingsData) {
         setSettings(settingsData);
-        setFormData(settingsData);
       }
 
-      // 2. Fetch Booked Courts
+      // 2. Fetch Team Booking Accounts
+      const { data: accountsData } = await supabase
+        .from('booking_accounts')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (accountsData) {
+        setAccounts(accountsData);
+      }
+
+      // 3. Fetch Booked Courts History
       const { data: courtsData } = await supabase
         .from('booked_courts')
         .select('*')
@@ -88,55 +115,175 @@ export default function CourtBooking() {
         setBookedCourts(courtsData);
       }
     } catch (err) {
-      console.error('Failed to load booking data:', err);
+      console.error('Error loading court booking data:', err);
     } finally {
       setIsLoading(false);
     }
   }
 
-  async function handleSaveSettings(e: React.FormEvent) {
+  // Identify next account in line for round-robin rotation
+  const activeAccounts = accounts.filter(a => a.is_active);
+  const nextInLineAccount = [...activeAccounts].sort((a, b) => {
+    if (!a.last_booked_at) return -1;
+    if (!b.last_booked_at) return 1;
+    return new Date(a.last_booked_at).getTime() - new Date(b.last_booked_at).getTime();
+  })[0];
+
+  // Open Modal to Add
+  function handleOpenAddModal() {
+    setModalMode('add');
+    setEditingId(null);
+    setAccountFormData({
+      first_name: '',
+      last_name: '',
+      email_prefix: '',
+      email_domain: 'gmail.com',
+      current_email_index: 1,
+      address: 'Fortune spring Blok ',
+      phone: '08',
+      is_active: true,
+      total_bookings: 0
+    });
+    setIsModalOpen(true);
+  }
+
+  // Open Modal to Edit
+  function handleOpenEditModal(acc: BookingAccount) {
+    setModalMode('edit');
+    setEditingId(acc.id || null);
+    setAccountFormData({ ...acc });
+    setIsModalOpen(true);
+  }
+
+  // Toggle Account Active Status
+  async function handleToggleAccountActive(id?: string, currentStatus?: boolean) {
+    if (!id) return;
+    try {
+      const newStatus = !currentStatus;
+      const { error } = await supabase
+        .from('booking_accounts')
+        .update({ is_active: newStatus })
+        .eq('id', id);
+
+      if (!error) {
+        setAccounts(prev => prev.map(a => a.id === id ? { ...a, is_active: newStatus } : a));
+      }
+    } catch (err) {
+      console.error('Error toggling account status:', err);
+    }
+  }
+
+  // Delete Account
+  async function handleDeleteAccount(id?: string, name?: string) {
+    if (!id) return;
+    if (!window.confirm(`Yakin ingin menghapus profil pemesan "${name}"?`)) return;
+
+    try {
+      const { error } = await supabase
+        .from('booking_accounts')
+        .delete()
+        .eq('id', id);
+
+      if (!error) {
+        setAccounts(prev => prev.filter(a => a.id !== id));
+      }
+    } catch (err) {
+      console.error('Error deleting account:', err);
+    }
+  }
+
+  // Save Account (Add or Edit)
+  async function handleSaveAccount(e: React.FormEvent) {
     e.preventDefault();
-    setIsSaving(true);
+    setIsSavingAccount(true);
+    try {
+      if (modalMode === 'add') {
+        const { data, error } = await supabase
+          .from('booking_accounts')
+          .insert([{
+            first_name: accountFormData.first_name.trim(),
+            last_name: accountFormData.last_name.trim(),
+            email_prefix: accountFormData.email_prefix.trim().toLowerCase(),
+            email_domain: accountFormData.email_domain.trim().toLowerCase() || 'gmail.com',
+            current_email_index: accountFormData.current_email_index || 1,
+            address: accountFormData.address.trim(),
+            phone: accountFormData.phone.trim(),
+            is_active: accountFormData.is_active ?? true,
+            total_bookings: 0,
+            last_booked_at: null
+          }])
+          .select()
+          .single();
+
+        if (!error && data) {
+          setAccounts(prev => [...prev, data]);
+          setIsModalOpen(false);
+        }
+      } else if (modalMode === 'edit' && editingId) {
+        const { data, error } = await supabase
+          .from('booking_accounts')
+          .update({
+            first_name: accountFormData.first_name.trim(),
+            last_name: accountFormData.last_name.trim(),
+            email_prefix: accountFormData.email_prefix.trim().toLowerCase(),
+            email_domain: accountFormData.email_domain.trim().toLowerCase() || 'gmail.com',
+            current_email_index: accountFormData.current_email_index || 1,
+            address: accountFormData.address.trim(),
+            phone: accountFormData.phone.trim(),
+            is_active: accountFormData.is_active
+          })
+          .eq('id', editingId)
+          .select()
+          .single();
+
+        if (!error && data) {
+          setAccounts(prev => prev.map(a => a.id === editingId ? data : a));
+          setIsModalOpen(false);
+        }
+      }
+    } catch (err) {
+      console.error('Error saving account:', err);
+    } finally {
+      setIsSavingAccount(false);
+    }
+  }
+
+  // Save Master Settings
+  async function handleSaveMasterSettings(e: React.FormEvent) {
+    e.preventDefault();
+    setIsSavingSettings(true);
+    setSaveSuccess(false);
     try {
       const { error } = await supabase
         .from('court_booking_settings')
-        .upsert({
-          id: 1,
-          ...formData,
+        .update({
+          is_active: settings.is_active,
           updated_at: new Date().toISOString()
-        });
+        })
+        .eq('id', 1);
 
-      if (error) {
-        alert('Gagal menyimpan pengaturan: ' + error.message);
-      } else {
-        setSettings(formData);
+      if (!error) {
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
       }
-    } catch (err: any) {
-      alert('Error: ' + err.message);
+    } catch (err) {
+      console.error('Error saving master settings:', err);
     } finally {
-      setIsSaving(false);
+      setIsSavingSettings(false);
     }
   }
-
-  async function handleDeleteBooking(id: string) {
-    if (!window.confirm('Hapus riwayat booking ini dari daftar?')) return;
-    const { error } = await supabase.from('booked_courts').delete().eq('id', id);
-    if (error) {
-      alert('Gagal menghapus: ' + error.message);
-    } else {
-      setBookedCourts(prev => prev.filter(c => c.id !== id));
-    }
-  }
-
-  const currentEmailTarget = `${settings.email_prefix}+${settings.current_email_index || 2}@${settings.email_domain}`;
 
   return (
-    <div className="flex flex-col gap-6 mt-4 pb-16">
-      {/* Top Banner & Header */}
-      <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.9) 100%)' }}>
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="container" style={{ paddingBottom: '5rem', maxWidth: '1000px', margin: '0 auto' }}>
+      
+      {/* Header Banner */}
+      <div className="card" style={{ 
+        background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95))',
+        border: '1px solid rgba(255, 255, 255, 0.1)',
+        marginBottom: '1.5rem',
+        padding: '1.5rem'
+      }}>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span style={{ fontSize: '1.5rem' }}>🎾</span>
@@ -188,27 +335,35 @@ export default function CourtBooking() {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <Clock size={16} color="var(--color-secondary)" />
+              <ShieldCheck size={16} color={settings.is_active ? '#34d399' : '#ef4444'} />
               <span style={{ color: 'white', fontSize: '0.85rem' }}>
-                Setiap 10 mnt (Mulai 07:00 WIB)
+                {settings.is_active ? 'Memantau per 10 menit' : 'Pengecekan dijeda'}
               </span>
             </div>
           </div>
 
-          {/* Email Target Box */}
+          {/* Next in Line Person Box */}
           <div style={{ background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.1)' }}>
             <div className="flex items-center justify-between mb-2">
-              <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', fontWeight: 600, textTransform: 'uppercase' }}>Target Email Berikutnya</span>
-              <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 700, background: 'rgba(56, 189, 248, 0.15)', padding: '2px 8px', borderRadius: '12px' }}>
-                Index +{settings.current_email_index || 2}
-              </span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', fontWeight: 600, textTransform: 'uppercase' }}>Giliran Pemesan Berikutnya</span>
+              {nextInLineAccount && (
+                <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 700, background: 'rgba(56, 189, 248, 0.15)', padding: '2px 8px', borderRadius: '12px' }}>
+                  Index +{nextInLineAccount.current_email_index || 1}
+                </span>
+              )}
             </div>
-            <div className="flex items-center gap-2" title={currentEmailTarget}>
-              <Mail size={16} color="#38bdf8" />
-              <span style={{ color: 'white', fontSize: '0.85rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {currentEmailTarget}
-              </span>
-            </div>
+            {nextInLineAccount ? (
+              <div style={{ color: 'white', fontSize: '0.85rem' }}>
+                <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <User size={15} color="#38bdf8" /> {nextInLineAccount.first_name} {nextInLineAccount.last_name}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {nextInLineAccount.email_prefix}+{nextInLineAccount.current_email_index}@{nextInLineAccount.email_domain}
+                </div>
+              </div>
+            ) : (
+              <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Belum ada anggota tim aktif</span>
+            )}
           </div>
 
           {/* Target Jam Box */}
@@ -250,18 +405,31 @@ export default function CourtBooking() {
       </div>
 
       {/* Navigation Sub-Tabs */}
-      <div className="flex bg-[rgba(255,255,255,0.1)] p-1 rounded-[var(--radius-md)] border border-[rgba(255,255,255,0.1)]">
+      <div className="flex bg-[rgba(255,255,255,0.1)] p-1 rounded-[var(--radius-md)] border border-[rgba(255,255,255,0.1)] mb-6">
         <button 
           onClick={() => setActiveTab('bookings')}
           style={{
             flex: 1, padding: '0.75rem', borderRadius: 'calc(var(--radius-md) - 4px)', border: 'none',
             background: activeTab === 'bookings' ? 'var(--color-primary)' : 'transparent',
             color: activeTab === 'bookings' ? 'white' : 'var(--color-text-light)',
-            fontWeight: activeTab === 'bookings' ? 600 : 400, cursor: 'pointer', transition: 'all 0.2s'
+            fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
           }}
         >
-          <CalendarDays size={18} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'text-bottom' }} />
-          Daftar Lapangan Terbooking ({bookedCourts.length})
+          <Calendar size={18} />
+          Riwayat Booking ({bookedCourts.length})
+        </button>
+
+        <button 
+          onClick={() => setActiveTab('accounts')}
+          style={{
+            flex: 1, padding: '0.75rem', borderRadius: 'calc(var(--radius-md) - 4px)', border: 'none',
+            background: activeTab === 'accounts' ? 'var(--color-primary)' : 'transparent',
+            color: activeTab === 'accounts' ? 'white' : 'var(--color-text-light)',
+            fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+          }}
+        >
+          <Users size={18} />
+          Tim Pemesan ({accounts.length})
         </button>
 
         <button 
@@ -270,100 +438,114 @@ export default function CourtBooking() {
             flex: 1, padding: '0.75rem', borderRadius: 'calc(var(--radius-md) - 4px)', border: 'none',
             background: activeTab === 'settings' ? 'var(--color-primary)' : 'transparent',
             color: activeTab === 'settings' ? 'white' : 'var(--color-text-light)',
-            fontWeight: activeTab === 'settings' ? 600 : 400, cursor: 'pointer', transition: 'all 0.2s'
+            fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
           }}
         >
-          <Settings size={18} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'text-bottom' }} />
-          Pengaturan Bot & Data Pemesan
+          <Settings size={18} />
+          Pengaturan Bot
         </button>
       </div>
 
-      {/* TAB 1: LIST OF BOOKED COURTS */}
+      {/* TAB 1: RIWAYAT BOOKING */}
       {activeTab === 'bookings' && (
-        <div className="glass-panel">
-          <div className="flex justify-between items-center mb-4">
-            <h3 style={{ color: 'white', fontSize: '1.2rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <ShieldCheck size={20} color="var(--color-secondary)" /> Riwayat Lapangan Sukses Terbooking
-            </h3>
-            <span style={{ fontSize: '0.85rem', color: 'var(--color-text-light)' }}>
-              Total: {bookedCourts.length} Booking
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 style={{ margin: 0, color: 'white', fontSize: '1.1rem', fontWeight: 700 }}>
+                📋 Daftar Lapangan Berhasil Terbooking
+              </h3>
+              <p style={{ margin: '4px 0 0', color: 'var(--color-text-light)', fontSize: '0.85rem' }}>
+                Jadwal yang berhasil didapatkan secara otomatis oleh bot.
+              </p>
+            </div>
+            <span style={{ fontSize: '0.85rem', color: '#34d399', background: 'rgba(52, 211, 153, 0.1)', padding: '4px 12px', borderRadius: '16px', fontWeight: 600 }}>
+              {bookedCourts.length} Terkonfirmasi
             </span>
           </div>
 
-          {isLoading ? (
-            <div style={{ textAlign: 'center', padding: '3rem', color: 'white' }}>
-              <RefreshCw size={28} className="animate-spin" style={{ margin: '0 auto 1rem auto', color: 'var(--color-secondary)' }} />
-              <p>Memuat data riwayat booking...</p>
-            </div>
-          ) : bookedCourts.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '3rem 1rem', background: 'rgba(255,255,255,0.02)', borderRadius: 'var(--radius-md)', border: '1px dashed rgba(255,255,255,0.1)' }}>
-              <Calendar size={48} color="gray" style={{ margin: '0 auto 1rem auto', opacity: 0.5 }} />
-              <h4 style={{ color: 'white', margin: '0 0 0.5rem 0' }}>Belum Ada Lapangan Terbooking</h4>
-              <p style={{ color: 'var(--color-text-light)', fontSize: '0.9rem', maxWidth: '480px', margin: '0 auto' }}>
-                Bot akan otomatis memesan saat menemukan slot kosong di jam 06-09 AM atau 04-06 PM (Senin s/d Kamis) dan mencatat hasilnya di sini.
-              </p>
+          {bookedCourts.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--color-text-light)' }}>
+              <Clock size={40} style={{ margin: '0 auto 1rem', opacity: 0.4 }} />
+              <p style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 4px' }}>Belum ada riwayat booking</p>
+              <p style={{ fontSize: '0.85rem', margin: 0 }}>Bot akan otomatis mencatat jadwal di sini begitu slot target berhasil dibooking.</p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
+            <div style={{ display: 'grid', gap: '1rem' }}>
               {bookedCourts.map((court) => (
                 <div 
-                  key={court.id}
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(52, 211, 153, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%)',
-                    border: '1px solid rgba(52, 211, 153, 0.3)',
-                    borderRadius: 'var(--radius-md)',
+                  key={court.id} 
+                  style={{ 
+                    background: 'rgba(255,255,255,0.03)', 
+                    border: '1px solid rgba(255,255,255,0.1)', 
+                    borderRadius: 'var(--radius-md)', 
                     padding: '1.25rem',
-                    position: 'relative'
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.75rem'
                   }}
                 >
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span style={{ fontSize: '1rem', fontWeight: 800, color: 'white' }}>
-                          {court.booking_date}
-                        </span>
-                        {court.day_name && (
-                          <span style={{ fontSize: '0.75rem', background: 'rgba(52, 211, 153, 0.2)', color: '#34d399', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
-                            {court.day_name}
-                          </span>
-                        )}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-3">
+                      <div style={{ 
+                        background: 'rgba(52, 211, 153, 0.15)', 
+                        color: '#34d399', 
+                        padding: '10px 14px', 
+                        borderRadius: 'var(--radius-sm)', 
+                        textAlign: 'center',
+                        fontWeight: 800,
+                        fontSize: '0.9rem',
+                        lineHeight: 1.2
+                      }}>
+                        <div>{court.day_name || 'SEN'}</div>
                       </div>
-                      <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--color-secondary)', marginTop: '4px' }}>
-                        🕒 {court.booking_time}
+                      <div>
+                        <div style={{ color: 'white', fontWeight: 800, fontSize: '1.1rem' }}>
+                          {court.booking_date}
+                        </div>
+                        <div style={{ color: '#38bdf8', fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Clock size={15} /> {court.booking_time} WIB
+                        </div>
                       </div>
                     </div>
 
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(52, 211, 153, 0.2)', color: '#34d399', fontSize: '0.75rem', fontWeight: 700, padding: '4px 8px', borderRadius: '6px' }}>
+                    <span style={{ 
+                      alignSelf: 'flex-start',
+                      fontSize: '0.75rem', 
+                      fontWeight: 700, 
+                      padding: '4px 10px', 
+                      borderRadius: '12px',
+                      background: 'rgba(52, 211, 153, 0.2)', 
+                      color: '#34d399',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
                       <CheckCircle2 size={14} /> Terkonfirmasi
                     </span>
                   </div>
 
-                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.75rem', fontSize: '0.85rem', color: 'var(--color-text-light)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
+                    gap: '0.5rem', 
+                    background: 'rgba(0,0,0,0.2)', 
+                    padding: '0.75rem', 
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.85rem'
+                  }}>
                     <div>
-                      <strong style={{ color: 'white' }}>Email:</strong> {court.booked_email}
+                      <span style={{ color: 'var(--color-text-light)', display: 'block', fontSize: '0.75rem' }}>Pemesan:</span>
+                      <strong style={{ color: 'white' }}>{court.first_name || 'Tri'} {court.last_name || 'Putra'}</strong>
                     </div>
                     <div>
-                      <strong style={{ color: 'white' }}>Nama:</strong> {court.first_name || 'Tri'} {court.last_name || 'Putra'}
+                      <span style={{ color: 'var(--color-text-light)', display: 'block', fontSize: '0.75rem' }}>Email Akun:</span>
+                      <span style={{ color: '#94a3b8' }}>{court.booked_email}</span>
                     </div>
                     <div>
-                      <strong style={{ color: 'white' }}>WhatsApp:</strong> {court.phone || '08111819112'}
+                      <span style={{ color: 'var(--color-text-light)', display: 'block', fontSize: '0.75rem' }}>No WhatsApp:</span>
+                      <span style={{ color: '#94a3b8' }}>{court.phone || '08111819112'}</span>
                     </div>
-                    {court.notes && (
-                      <div style={{ fontSize: '0.75rem', color: 'gray', marginTop: '4px' }}>
-                        {court.notes}
-                      </div>
-                    )}
                   </div>
-
-                  <button
-                    onClick={() => handleDeleteBooking(court.id)}
-                    style={{
-                      background: 'transparent', border: 'none', color: '#ef4444', fontSize: '0.75rem',
-                      cursor: 'pointer', marginTop: '0.75rem', padding: '4px 0', textDecoration: 'underline'
-                    }}
-                  >
-                    Hapus dari Catatan
-                  </button>
                 </div>
               ))}
             </div>
@@ -371,132 +553,200 @@ export default function CourtBooking() {
         </div>
       )}
 
-      {/* TAB 2: SETTINGS & CONFIGURATION */}
+      {/* TAB 2: TIM PEMESAN (MULTI-PERSON ROSTER) */}
+      {activeTab === 'accounts' && (
+        <div className="card">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <div>
+              <h3 style={{ margin: 0, color: 'white', fontSize: '1.1rem', fontWeight: 700 }}>
+                👥 Anggota Tim Pemesan Lapangan
+              </h3>
+              <p style={{ margin: '4px 0 0', color: 'var(--color-text-light)', fontSize: '0.85rem' }}>
+                Sistem akan merotasi data pemesan secara adil (round-robin) di antara anggota yang berstatus <strong>Aktif</strong>.
+              </p>
+            </div>
+            <button 
+              onClick={handleOpenAddModal}
+              className="btn"
+              style={{ background: 'var(--color-secondary)', color: '#0f172a', fontWeight: 700, padding: '0.6rem 1.1rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Plus size={16} /> Tambah Anggota
+            </button>
+          </div>
+
+          {accounts.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--color-text-light)' }}>
+              <Users size={40} style={{ margin: '0 auto 1rem', opacity: 0.4 }} />
+              <p style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 4px' }}>Belum ada anggota tim terdaftar</p>
+              <p style={{ fontSize: '0.85rem', margin: '0 0 1rem' }}>Tambahkan data anggota (nama, email, alamat, no WA) untuk rotasi booking.</p>
+              <button onClick={handleOpenAddModal} className="btn" style={{ background: 'var(--color-secondary)', color: '#0f172a', fontWeight: 700 }}>
+                + Tambah Anggota Sekarang
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: '1rem' }}>
+              {accounts.map((acc) => {
+                const isNext = nextInLineAccount && nextInLineAccount.id === acc.id;
+                const emailAlias = `${acc.email_prefix}+${acc.current_email_index || 1}@${acc.email_domain || 'gmail.com'}`;
+
+                return (
+                  <div 
+                    key={acc.id}
+                    style={{
+                      background: isNext ? 'rgba(56, 189, 248, 0.06)' : 'rgba(255,255,255,0.03)',
+                      border: isNext ? '1px solid rgba(56, 189, 248, 0.4)' : '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: '1.25rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.75rem',
+                      position: 'relative'
+                    }}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        <div style={{
+                          width: '42px',
+                          height: '42px',
+                          borderRadius: '50%',
+                          background: isNext ? 'var(--color-secondary)' : 'rgba(255,255,255,0.1)',
+                          color: isNext ? '#0f172a' : 'white',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 800,
+                          fontSize: '1.1rem'
+                        }}>
+                          {acc.first_name.charAt(0)}
+                        </div>
+
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span style={{ color: 'white', fontWeight: 800, fontSize: '1.1rem' }}>
+                              {acc.first_name} {acc.last_name}
+                            </span>
+                            {isNext && (
+                              <span style={{ 
+                                fontSize: '0.7rem', 
+                                fontWeight: 800, 
+                                background: '#38bdf8', 
+                                color: '#0f172a', 
+                                padding: '2px 8px', 
+                                borderRadius: '12px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}>
+                                <Sparkles size={11} /> GILIRAN BERIKUTNYA
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ color: '#38bdf8', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Mail size={14} /> {emailAlias}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action buttons & Switch */}
+                      <div className="flex items-center gap-2">
+                        {/* Active toggle button */}
+                        <button 
+                          onClick={() => handleToggleAccountActive(acc.id, acc.is_active)}
+                          className="btn"
+                          style={{
+                            padding: '4px 10px',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            borderRadius: '12px',
+                            border: 'none',
+                            background: acc.is_active ? 'rgba(52, 211, 153, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                            color: acc.is_active ? '#34d399' : '#ef4444',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {acc.is_active ? '● Aktif' : '○ Nonaktif'}
+                        </button>
+
+                        <button 
+                          onClick={() => handleOpenEditModal(acc)}
+                          className="btn"
+                          style={{ background: 'rgba(255,255,255,0.08)', color: 'white', padding: '6px 10px', fontSize: '0.8rem' }}
+                          title="Edit Data"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+
+                        <button 
+                          onClick={() => handleDeleteAccount(acc.id, `${acc.first_name} ${acc.last_name}`)}
+                          className="btn"
+                          style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '6px 10px', fontSize: '0.8rem' }}
+                          title="Hapus"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Member Details */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                      gap: '0.5rem',
+                      background: 'rgba(0,0,0,0.2)',
+                      padding: '0.75rem',
+                      borderRadius: 'var(--radius-sm)',
+                      fontSize: '0.85rem'
+                    }}>
+                      <div className="flex items-center gap-2 text-[var(--color-text-light)]">
+                        <MapPin size={15} color="#94a3b8" />
+                        <span>Alamat: <strong style={{ color: 'white' }}>{acc.address}</strong></span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[var(--color-text-light)]">
+                        <Phone size={15} color="#94a3b8" />
+                        <span>WA: <strong style={{ color: 'white' }}>{acc.phone}</strong></span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[var(--color-text-light)]">
+                        <Clock size={15} color="#94a3b8" />
+                        <span>Total Booking: <strong style={{ color: '#34d399' }}>{acc.total_bookings || 0} kali</strong></span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 3: PENGATURAN MASTER BOT */}
       {activeTab === 'settings' && (
-        <div className="glass-panel">
-          <h3 style={{ color: 'white', fontSize: '1.2rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Settings size={20} color="var(--color-secondary)" /> Pengaturan Data Auto-Booking
+        <div className="card">
+          <h3 style={{ margin: '0 0 1rem 0', color: 'white', fontSize: '1.1rem', fontWeight: 700 }}>
+            ⚙️ Pengaturan Master Bot
           </h3>
 
           {saveSuccess && (
-            <div style={{ background: 'rgba(52, 211, 153, 0.15)', border: '1px solid #34d399', color: '#34d399', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem' }}>
+            <div style={{ background: 'rgba(52, 211, 153, 0.2)', border: '1px solid #34d399', color: '#34d399', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem' }}>
               <Check size={18} /> Pengaturan berhasil disimpan!
             </div>
           )}
 
-          <form onSubmit={handleSaveSettings} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <form onSubmit={handleSaveMasterSettings} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             
             {/* Status Bot Active Switch */}
             <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.08)' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', color: 'white', fontWeight: 600 }}>
                 <input 
                   type="checkbox" 
-                  checked={formData.is_active} 
-                  onChange={(e) => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
+                  checked={settings.is_active} 
+                  onChange={(e) => setSettings(prev => ({ ...prev, is_active: e.target.checked }))}
                   style={{ width: '20px', height: '20px', accentColor: 'var(--color-secondary)', cursor: 'pointer' }}
                 />
-                <span>Aktifkan Pemeriksaan & Pemesanan Otomatis (Auto-Booking Bot)</span>
+                <span>Aktifkan Pemeriksaan & Pemesanan Otomatis (Master Auto-Booking Switch)</span>
               </label>
               <p style={{ margin: '6px 0 0 32px', color: 'var(--color-text-light)', fontSize: '0.8rem' }}>
-                Jika dicentang, GitHub Actions cron akan otomatis mengecek & membooking lapangan saat jadwal dibuka.
+                Jika dicentang, GitHub Actions cron akan otomatis mengecek & membooking lapangan menggunakan rotasi akun anggota tim yang aktif.
               </p>
-            </div>
-
-            {/* Email Alias Counter */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', color: 'var(--color-text-light)', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
-                  Email Prefix:
-                </label>
-                <input 
-                  type="text" 
-                  className="input-field" 
-                  value={formData.email_prefix} 
-                  onChange={(e) => setFormData(prev => ({ ...prev, email_prefix: e.target.value }))}
-                  placeholder="tri.kartika.putra"
-                  required 
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', color: 'var(--color-text-light)', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
-                  Index Alias Berikutnya (Contoh: +2, +3, +4):
-                </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ color: 'white', fontWeight: 700 }}>+</span>
-                  <input 
-                    type="number" 
-                    className="input-field" 
-                    value={formData.current_email_index} 
-                    onChange={(e) => setFormData(prev => ({ ...prev, current_email_index: parseInt(e.target.value) || 2 }))}
-                    min={1}
-                    required 
-                  />
-                  <span style={{ color: 'var(--color-text-light)', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>@{formData.email_domain}</span>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ background: 'rgba(56, 189, 248, 0.1)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(56, 189, 248, 0.3)', color: '#38bdf8', fontSize: '0.85rem' }}>
-              ℹ️ <strong>Email yang akan digunakan pada booking berikutnya:</strong> {formData.email_prefix}+{formData.current_email_index}@{formData.email_domain}
-            </div>
-
-            {/* Contact Person Details */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', color: 'var(--color-text-light)', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
-                  First Name:
-                </label>
-                <input 
-                  type="text" 
-                  className="input-field" 
-                  value={formData.first_name} 
-                  onChange={(e) => setFormData(prev => ({ ...prev, first_name: e.target.value }))}
-                  required 
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', color: 'var(--color-text-light)', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
-                  Last Name:
-                </label>
-                <input 
-                  type="text" 
-                  className="input-field" 
-                  value={formData.last_name} 
-                  onChange={(e) => setFormData(prev => ({ ...prev, last_name: e.target.value }))}
-                  required 
-                />
-              </div>
-            </div>
-
-            {/* Address & WhatsApp */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', color: 'var(--color-text-light)', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
-                  Alamat Fortune dengan No Blok:
-                </label>
-                <input 
-                  type="text" 
-                  className="input-field" 
-                  value={formData.address} 
-                  onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
-                  required 
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', color: 'var(--color-text-light)', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
-                  Nomor WhatsApp Aktif:
-                </label>
-                <input 
-                  type="text" 
-                  className="input-field" 
-                  value={formData.phone} 
-                  onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-                  required 
-                />
-              </div>
             </div>
 
             {/* Target Hours Indicator */}
@@ -532,20 +782,174 @@ export default function CourtBooking() {
                 ))}
               </div>
               <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-light)', fontSize: '0.75rem' }}>
-                *Bot akan memprioritaskan slot pagi (06:00 - 09:00) dan sore/malam (16:00 - 19:00) pada hari Senin s/d Kamis.
+                *Bot otomatis memprioritaskan slot pagi (06:00 - 09:00) dan sore/malam (16:00 - 19:00) pada hari Senin s/d Kamis.
               </p>
             </div>
 
             <button 
               type="submit" 
               className="btn"
-              disabled={isSaving}
+              disabled={isSavingSettings}
               style={{ alignSelf: 'flex-start', background: 'var(--color-secondary)', color: '#0f172a', fontWeight: 700, padding: '0.75rem 1.5rem', marginTop: '0.5rem' }}
             >
-              {isSaving ? 'Menyimpan...' : 'Simpan Pengaturan'}
+              {isSavingSettings ? 'Menyimpan...' : 'Simpan Pengaturan'}
             </button>
 
           </form>
+        </div>
+      )}
+
+      {/* MODAL: TAMBAH / EDIT ANGGOTA TIM */}
+      {isModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.7)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: 'var(--color-surface)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: 'var(--radius-md)',
+            padding: '1.5rem',
+            width: '100%',
+            maxWidth: '520px',
+            maxHeight: '90vh',
+            overflowY: 'auto'
+          }}>
+            <h3 style={{ margin: '0 0 0.5rem', color: 'white', fontSize: '1.2rem', fontWeight: 800 }}>
+              {modalMode === 'add' ? '➕ Tambah Anggota Tim Pemesan' : '✏️ Edit Data Anggota Tim'}
+            </h3>
+            <p style={{ margin: '0 0 1.25rem', color: 'var(--color-text-light)', fontSize: '0.85rem' }}>
+              Data ini akan digunakan untuk mengisi formulir pemesanan Google Calendar saat giliran tiba.
+            </p>
+
+            <form onSubmit={handleSaveAccount} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', color: 'var(--color-text-light)', fontSize: '0.85rem', marginBottom: '0.3rem' }}>
+                    First Name:
+                  </label>
+                  <input 
+                    type="text" 
+                    className="input-field" 
+                    value={accountFormData.first_name} 
+                    onChange={(e) => setAccountFormData(prev => ({ ...prev, first_name: e.target.value }))}
+                    placeholder="Contoh: Dias"
+                    required 
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', color: 'var(--color-text-light)', fontSize: '0.85rem', marginBottom: '0.3rem' }}>
+                    Last Name:
+                  </label>
+                  <input 
+                    type="text" 
+                    className="input-field" 
+                    value={accountFormData.last_name} 
+                    onChange={(e) => setAccountFormData(prev => ({ ...prev, last_name: e.target.value }))}
+                    placeholder="Contoh: Pratama"
+                    required 
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', color: 'var(--color-text-light)', fontSize: '0.85rem', marginBottom: '0.3rem' }}>
+                    Email Prefix:
+                  </label>
+                  <input 
+                    type="text" 
+                    className="input-field" 
+                    value={accountFormData.email_prefix} 
+                    onChange={(e) => setAccountFormData(prev => ({ ...prev, email_prefix: e.target.value }))}
+                    placeholder="dias.pratama"
+                    required 
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', color: 'var(--color-text-light)', fontSize: '0.85rem', marginBottom: '0.3rem' }}>
+                    Index Alias:
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ color: 'white', fontWeight: 700 }}>+</span>
+                    <input 
+                      type="number" 
+                      className="input-field" 
+                      value={accountFormData.current_email_index} 
+                      onChange={(e) => setAccountFormData(prev => ({ ...prev, current_email_index: parseInt(e.target.value) || 1 }))}
+                      min={1}
+                      required 
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(56, 189, 248, 0.1)', padding: '0.6rem 0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(56, 189, 248, 0.25)', color: '#38bdf8', fontSize: '0.8rem' }}>
+                ℹ️ <strong>Preview Email:</strong> {accountFormData.email_prefix || 'email'}+{accountFormData.current_email_index || 1}@{accountFormData.email_domain || 'gmail.com'}
+              </div>
+
+              <div>
+                <label style={{ display: 'block', color: 'var(--color-text-light)', fontSize: '0.85rem', marginBottom: '0.3rem' }}>
+                  Alamat Fortune dengan No Blok:
+                </label>
+                <input 
+                  type="text" 
+                  className="input-field" 
+                  value={accountFormData.address} 
+                  onChange={(e) => setAccountFormData(prev => ({ ...prev, address: e.target.value }))}
+                  placeholder="Fortune spring Blok D2 - J05"
+                  required 
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', color: 'var(--color-text-light)', fontSize: '0.85rem', marginBottom: '0.3rem' }}>
+                  Nomor WhatsApp Aktif:
+                </label>
+                <input 
+                  type="text" 
+                  className="input-field" 
+                  value={accountFormData.phone} 
+                  onChange={(e) => setAccountFormData(prev => ({ ...prev, phone: e.target.value }))}
+                  placeholder="08111819112"
+                  required 
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 mt-4">
+                <button 
+                  type="button" 
+                  onClick={() => setIsModalOpen(false)}
+                  className="btn"
+                  style={{ background: 'rgba(255,255,255,0.1)', color: 'white' }}
+                >
+                  Batal
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn"
+                  disabled={isSavingAccount}
+                  style={{ background: 'var(--color-secondary)', color: '#0f172a', fontWeight: 700 }}
+                >
+                  {isSavingAccount ? 'Menyimpan...' : 'Simpan Data Anggota'}
+                </button>
+              </div>
+
+            </form>
+          </div>
         </div>
       )}
 

@@ -1,6 +1,7 @@
 /**
  * FTC Automated Court Booking Bot (Google Calendar Appointments)
  * Target URL: https://calendar.app.google/iueH4Lnt6qsCgVmZ6
+ * Multi-Person Round-Robin Support
  */
 
 const { chromium } = require('playwright');
@@ -13,7 +14,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const TARGET_URL = 'https://calendar.app.google/iueH4Lnt6qsCgVmZ6';
 
-// Target Preferences
+// Fallback Preferences
 const DEFAULT_FIRST_NAME = 'Tri';
 const DEFAULT_LAST_NAME = 'Putra';
 const DEFAULT_EMAIL_PREFIX = 'tri.kartika.putra';
@@ -46,39 +47,59 @@ function isIgnoredDay(dayStr) {
   return IGNORED_DAYS.some(d => clean.includes(d));
 }
 
-async function getBookingSettings() {
+async function getMasterSettings() {
   try {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('court_booking_settings')
       .select('*')
       .eq('id', 1)
       .single();
 
-    if (error || !data) {
-      console.log('Using default booking settings.');
+    return data || { is_active: true };
+  } catch (err) {
+    return { is_active: true };
+  }
+}
+
+/**
+ * Gets the next booking account in round-robin order.
+ * Priority: is_active = true, ORDER BY last_booked_at ASC NULLS FIRST
+ */
+async function getNextBookingAccount() {
+  try {
+    const { data, error } = await supabase
+      .from('booking_accounts')
+      .select('*')
+      .eq('is_active', true)
+      .order('last_booked_at', { ascending: true, nullsFirst: true })
+      .limit(1);
+
+    if (error || !data || data.length === 0) {
+      console.log('No active booking accounts in booking_accounts table. Using default fallback.');
       return {
-        email_prefix: DEFAULT_EMAIL_PREFIX,
-        email_domain: DEFAULT_EMAIL_DOMAIN,
-        current_email_index: 3,
+        id: null,
         first_name: DEFAULT_FIRST_NAME,
         last_name: DEFAULT_LAST_NAME,
+        email_prefix: DEFAULT_EMAIL_PREFIX,
+        email_domain: DEFAULT_EMAIL_DOMAIN,
+        current_email_index: 4,
         address: DEFAULT_ADDRESS,
-        phone: DEFAULT_PHONE,
-        is_active: true
+        phone: DEFAULT_PHONE
       };
     }
-    return data;
+
+    return data[0];
   } catch (err) {
-    console.warn('Could not fetch settings from Supabase, using defaults:', err.message);
+    console.warn('Could not fetch account from booking_accounts, using default:', err.message);
     return {
-      email_prefix: DEFAULT_EMAIL_PREFIX,
-      email_domain: DEFAULT_EMAIL_DOMAIN,
-      current_email_index: 3,
+      id: null,
       first_name: DEFAULT_FIRST_NAME,
       last_name: DEFAULT_LAST_NAME,
+      email_prefix: DEFAULT_EMAIL_PREFIX,
+      email_domain: DEFAULT_EMAIL_DOMAIN,
+      current_email_index: 4,
       address: DEFAULT_ADDRESS,
-      phone: DEFAULT_PHONE,
-      is_active: true
+      phone: DEFAULT_PHONE
     };
   }
 }
@@ -99,7 +120,7 @@ async function updateCheckStatus(status, message) {
   }
 }
 
-async function recordSuccessfulBooking(date, time, dayName, email, settings) {
+async function recordSuccessfulBooking(date, time, dayName, email, account) {
   try {
     // 1. Insert into booked_courts
     const { error: insertError } = await supabase
@@ -109,45 +130,63 @@ async function recordSuccessfulBooking(date, time, dayName, email, settings) {
         booking_time: time,
         day_name: dayName,
         booked_email: email,
-        first_name: settings.first_name,
-        last_name: settings.last_name,
-        phone: settings.phone,
+        first_name: account.first_name,
+        last_name: account.last_name,
+        phone: account.phone,
         status: 'confirmed',
-        notes: `Auto-booked via Bot on ${new Date().toLocaleString('id-ID')}`
+        notes: `Auto-booked via Bot for ${account.first_name} ${account.last_name} on ${new Date().toLocaleString('id-ID')}`
       }]);
 
     if (insertError) console.error('Error recording booking:', insertError.message);
 
-    // 2. Increment email index in settings
-    const nextIndex = (settings.current_email_index || 2) + 1;
+    // 2. Increment account's email index & update last_booked_at in booking_accounts
+    const nextIndex = (account.current_email_index || 1) + 1;
+    const newTotal = (account.total_bookings || 0) + 1;
+
+    if (account.id) {
+      await supabase
+        .from('booking_accounts')
+        .update({
+          current_email_index: nextIndex,
+          total_bookings: newTotal,
+          last_booked_at: new Date().toISOString()
+        })
+        .eq('id', account.id);
+
+      console.log(`[ACCOUNT_UPDATED] ${account.first_name} ${account.last_name} next index: +${nextIndex}, total bookings: ${newTotal}`);
+    }
+
+    // 3. Update master settings log
     await supabase
       .from('court_booking_settings')
       .update({
-        current_email_index: nextIndex,
         last_check_at: new Date().toISOString(),
         last_check_status: 'booked',
-        last_check_message: `Berhasil booking ${dayName || ''} ${date} jam ${time} menggunakan ${email}`,
+        last_check_message: `Berhasil booking ${dayName || ''} ${date} (${time}) atas nama ${account.first_name} ${account.last_name} (${email})`,
         updated_at: new Date().toISOString()
       })
       .eq('id', 1);
 
-    console.log(`[SUCCESS] Booking recorded! Next email index is: +${nextIndex}`);
+    console.log(`[SUCCESS] Booking successfully recorded & round-robin rotation shifted!`);
   } catch (err) {
     console.error('Failed to record successful booking:', err.message);
   }
 }
 
 async function runAutoBooking() {
-  console.log(`[START] FTC Court Auto-Booking Bot @ ${new Date().toISOString()}`);
+  console.log(`[START] FTC Court Auto-Booking Bot (Multi-Person) @ ${new Date().toISOString()}`);
   
-  const settings = await getBookingSettings();
-  if (settings.is_active === false) {
-    console.log('[INFO] Auto-booking is currently disabled in settings. Skipping.');
+  const masterSettings = await getMasterSettings();
+  if (masterSettings.is_active === false) {
+    console.log('[INFO] Auto-booking is currently disabled in master settings. Skipping.');
     return;
   }
 
-  const currentEmail = `${settings.email_prefix}+${settings.current_email_index || 3}@${settings.email_domain}`;
-  console.log(`[INFO] Current booking target email: ${currentEmail}`);
+  // Get current round-robin account
+  const account = await getNextBookingAccount();
+  const currentEmail = `${account.email_prefix}+${account.current_email_index || 1}@${account.email_domain || 'gmail.com'}`;
+  
+  console.log(`[ROBIN_TURN] Next in line: ${account.first_name} ${account.last_name} (${currentEmail})`);
 
   let browser;
   try {
@@ -189,7 +228,7 @@ async function runAutoBooking() {
 
     console.log(`[INFO] Scanning calendar days and slots...`);
 
-    // Find first valid slot matching target hours (6-9am, 4-6pm) on Mon-Thu
+    // Find first valid slot matching target hours (6-9am, 4-7pm) on Mon-Thu
     for (let i = 0; i < allButtons.length; i++) {
       const btn = allButtons[i];
       const text = (await btn.innerText()).trim();
@@ -211,7 +250,7 @@ async function runAutoBooking() {
     }
 
     if (!candidateSlot) {
-      const msg = `Pengecekan selesai pada ${new Date().toLocaleTimeString('id-ID')}. Belum ada slot target (06-09 AM, 04-06 PM Sen-Kam) yang tersedia.`;
+      const msg = `Pengecekan selesai pada ${new Date().toLocaleTimeString('id-ID')}. Belum ada slot target (06-09 AM, 04-07 PM Sen-Kam) yang tersedia.`;
       console.log(`[NO_SLOT] ${msg}`);
       await updateCheckStatus('no_slots', msg);
       return;
@@ -223,17 +262,17 @@ async function runAutoBooking() {
     await page.waitForTimeout(2000);
 
     // Fill form inputs in modal with realistic human-like typing
-    console.log(`[ACTION] Filling booking form with email: ${currentEmail}...`);
+    console.log(`[ACTION] Filling booking form for ${account.first_name} ${account.last_name} with email: ${currentEmail}...`);
 
     // 1. First Name (First visible text input)
     const firstNameInput = page.locator('input[type="text"]:visible').first();
     await firstNameInput.click();
-    await firstNameInput.pressSequentially(settings.first_name || DEFAULT_FIRST_NAME, { delay: 40 });
+    await firstNameInput.pressSequentially(account.first_name || DEFAULT_FIRST_NAME, { delay: 40 });
 
     // 2. Last Name (Second visible text input)
     const lastNameInput = page.locator('input[type="text"]:visible').nth(1);
     await lastNameInput.click();
-    await lastNameInput.pressSequentially(settings.last_name || DEFAULT_LAST_NAME, { delay: 40 });
+    await lastNameInput.pressSequentially(account.last_name || DEFAULT_LAST_NAME, { delay: 40 });
 
     // 3. Email Address
     const emailInput = page.locator('input[type="email"]:visible').first();
@@ -243,12 +282,12 @@ async function runAutoBooking() {
     // 4. Custom field: Alamat Fortune dengan no Blok (First visible textarea)
     const addressInput = page.locator('textarea:visible').first();
     await addressInput.click();
-    await addressInput.pressSequentially(settings.address || DEFAULT_ADDRESS, { delay: 40 });
+    await addressInput.pressSequentially(account.address || DEFAULT_ADDRESS, { delay: 40 });
 
     // 5. Custom field: Nomor Whatsapp Aktif (Second visible textarea)
     const phoneInput = page.locator('textarea:visible').nth(1);
     await phoneInput.click();
-    await phoneInput.pressSequentially(settings.phone || DEFAULT_PHONE, { delay: 40 });
+    await phoneInput.pressSequentially(account.phone || DEFAULT_PHONE, { delay: 40 });
 
     await page.waitForTimeout(1000);
 
@@ -263,8 +302,8 @@ async function runAutoBooking() {
 
     console.log('[CONFIRMED] Booking confirmed successfully by Google Calendar!');
 
-    // Record to database
-    await recordSuccessfulBooking(candidateDate, candidateTime, candidateDay, currentEmail, settings);
+    // Record to database and rotate account
+    await recordSuccessfulBooking(candidateDate, candidateTime, candidateDay, currentEmail, account);
 
   } catch (err) {
     console.error('[ERROR] Automation error during execution:', err);

@@ -79,3 +79,22 @@ CREATE TABLE IF NOT EXISTS public.booked_courts (
 ALTER TABLE public.court_booking_settings DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.booked_courts DISABLE ROW LEVEL SECURITY;
 
+-- Team Booking Accounts (Multi-Person Round-Robin)
+CREATE TABLE IF NOT EXISTS public.booking_accounts (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    email_prefix TEXT NOT NULL,
+    email_domain TEXT NOT NULL DEFAULT 'gmail.com',
+    current_email_index INTEGER NOT NULL DEFAULT 1,
+    address TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    total_bookings INTEGER NOT NULL DEFAULT 0,
+    last_booked_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.booking_accounts DISABLE ROW LEVEL SECURITY;
+
+

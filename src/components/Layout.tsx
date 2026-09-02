@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { Home, Users, Shuffle, UsersRound, User, Flag } from 'lucide-react'
+import { Home, Users, Shuffle, UsersRound, User, Flag, Calendar } from 'lucide-react'
 
 export default function Layout() {
   const location = useLocation()
@@ -10,6 +10,7 @@ export default function Layout() {
     { path: '/fixed-doubles', label: 'Ganda Tetap', icon: <UsersRound size={20} /> },
     { path: '/singles', label: 'Tunggal', icon: <User size={20} /> },
     { path: '/ftc-17-agustus', label: '17 Agustus', icon: <Flag size={20} /> },
+    { path: '/booking', label: 'Booking Lapangan', icon: <Calendar size={20} /> },
     { path: '/players', label: 'Pemain', icon: <Users size={20} /> },
   ]
 

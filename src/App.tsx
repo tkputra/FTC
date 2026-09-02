@@ -6,6 +6,7 @@ import RandomDoubles from './pages/RandomDoubles'
 import FixedDoubles from './pages/FixedDoubles'
 import Singles from './pages/Singles'
 import FTC17Agustus from './pages/FTC17Agustus'
+import CourtBooking from './pages/CourtBooking'
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
           <Route path="fixed-doubles" element={<FixedDoubles />} />
           <Route path="singles" element={<Singles />} />
           <Route path="ftc-17-agustus" element={<FTC17Agustus />} />
+          <Route path="booking" element={<CourtBooking />} />
         </Route>
       </Routes>
     </BrowserRouter>

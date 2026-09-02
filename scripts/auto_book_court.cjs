@@ -188,6 +188,31 @@ async function bookSingleSlot(page, slotBtn, candidateTime, candidateDate, candi
   await slotBtn.click();
   await page.waitForTimeout(2000);
 
+  // Extract accurate full date and time from the modal dialog header
+  const modalHeaderInfo = await page.evaluate(() => {
+    const allElements = Array.from(document.querySelectorAll('div, span, p, h2, h3'));
+    for (const el of allElements) {
+      const txt = (el.innerText || '').trim();
+      if (txt.includes('·') && (txt.includes('–') || txt.includes('-')) && /\d/.test(txt)) {
+        return txt; // e.g. "Senin, 7 September · 09:00 – 10:00"
+      }
+    }
+    return '';
+  });
+
+  let exactDate = candidateDate;
+  let exactTime = candidateTime;
+  let exactDay = candidateDay;
+
+  if (modalHeaderInfo && modalHeaderInfo.includes('·')) {
+    const [dPart, tPart] = modalHeaderInfo.split('·').map(s => s.trim());
+    exactDate = dPart.includes('2026') ? dPart : `${dPart} 2026`;
+    exactTime = tPart;
+    if (dPart.includes(',')) {
+      exactDay = dPart.split(',')[0].trim();
+    }
+  }
+
   // 1. First Name
   const firstNameInput = page.locator('input[type="text"]:visible').first();
   await firstNameInput.click();
@@ -225,10 +250,10 @@ async function bookSingleSlot(page, slotBtn, candidateTime, candidateDate, candi
   const confirmBtn = page.locator('button:has-text("Tutup"), button:has-text("Close")').first();
   await confirmBtn.waitFor({ state: 'visible', timeout: 20000 });
 
-  console.log(`[CONFIRMED] Slot ${candidateTime} confirmed for ${account.first_name} ${account.last_name}!`);
+  console.log(`[CONFIRMED] Slot ${exactDate} (${exactTime}) confirmed for ${account.first_name} ${account.last_name}!`);
 
   // Record to database and shift round-robin turn
-  await recordSuccessfulBooking(candidateDate, candidateTime, candidateDay, currentEmail, account);
+  await recordSuccessfulBooking(exactDate, exactTime, exactDay, currentEmail, account);
 
   // Close modal to return to calendar
   const closeBtn = page.locator('button:has-text("Tutup"), button:has-text("Close")').first();

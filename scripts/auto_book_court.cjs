@@ -24,15 +24,12 @@ const DEFAULT_PHONE = '08111819112';
 // Allowed Days: Mon - Thu only (Exclude Fri, Sat, Sun)
 const IGNORED_DAYS = ['fri', 'sat', 'sun', 'jumat', 'sabtu', 'minggu', 'friday', 'saturday', 'sunday', 'jum', 'sab', 'min'];
 
-// Target Hours (Includes 6am, 7am, 8am, 9am, 10am, 2pm, 3pm, 4pm, 5pm, 6pm, 7pm)
+// Target Hours (Standard 8 Slots: 6am, 7am, 8am, 9am, 4pm, 5pm, 6pm, 7pm)
 const VALID_HOURS = [
   '06:00', '6:00', '6:00am', '06:00am',
   '07:00', '7:00', '7:00am', '07:00am',
   '08:00', '8:00', '8:00am', '08:00am',
   '09:00', '9:00', '9:00am', '09:00am',
-  '10:00', '10:00am',
-  '14:00', '2:00pm', '02:00pm',
-  '15:00', '3:00pm', '03:00pm',
   '16:00', '4:00pm', '04:00pm',
   '17:00', '5:00pm', '05:00pm',
   '18:00', '6:00pm', '06:00pm',

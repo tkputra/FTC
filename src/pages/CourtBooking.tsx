@@ -46,7 +46,7 @@ const GOOGLE_CALENDAR_URL = 'https://calendar.app.google/iueH4Lnt6qsCgVmZ6';
 
 export default function CourtBooking() {
   const [settings, setSettings] = useState<MasterSettings>({
-    target_hours: ['6:00am', '7:00am', '8:00am', '9:00am', '10:00am', '2:00pm', '3:00pm', '4:00pm', '5:00pm', '6:00pm', '7:00pm'],
+    target_hours: ['6:00am', '7:00am', '8:00am', '9:00am', '4:00pm', '5:00pm', '6:00pm', '7:00pm'],
     target_days: ['Mon', 'Tue', 'Wed', 'Thu'],
     is_active: true,
     last_check_message: 'Sistem siap memantau jadwal'
@@ -384,13 +384,13 @@ export default function CourtBooking() {
             <div className="flex items-center justify-between mb-2">
               <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', fontWeight: 600, textTransform: 'uppercase' }}>Target Jam</span>
               <span style={{ fontSize: '0.75rem', color: '#facc15', fontWeight: 700, background: 'rgba(250, 204, 21, 0.15)', padding: '2px 8px', borderRadius: '12px' }}>
-                Sen - Kam
+                8 Slot (Sen-Kam)
               </span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '0.7rem', color: '#34d399', fontWeight: 800, width: '32px' }}>Pagi:</span>
-                {['06:00', '07:00', '08:00', '09:00', '10:00'].map(h => (
+                {['06:00', '07:00', '08:00', '09:00'].map(h => (
                   <span key={h} style={{ fontSize: '0.7rem', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', background: 'rgba(52, 211, 153, 0.15)', color: '#34d399' }}>
                     {h}
                   </span>
@@ -398,7 +398,7 @@ export default function CourtBooking() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '0.7rem', color: '#f97316', fontWeight: 800, width: '32px' }}>Sore:</span>
-                {['14:00', '15:00', '16:00', '17:00', '18:00', '19:00'].map(h => (
+                {['16:00', '17:00', '18:00', '19:00'].map(h => (
                   <span key={h} style={{ fontSize: '0.7rem', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', background: 'rgba(249, 115, 22, 0.15)', color: '#f97316' }}>
                     {h}
                   </span>
@@ -790,9 +790,6 @@ export default function CourtBooking() {
                   { label: '07:00 (7 AM)', value: '7:00am', color: '#34d399' },
                   { label: '08:00 (8 AM)', value: '8:00am', color: '#34d399' },
                   { label: '09:00 (9 AM)', value: '9:00am', color: '#34d399' },
-                  { label: '10:00 (10 AM)', value: '10:00am', color: '#34d399' },
-                  { label: '14:00 (2 PM)', value: '2:00pm', color: '#f97316' },
-                  { label: '15:00 (3 PM)', value: '3:00pm', color: '#f97316' },
                   { label: '16:00 (4 PM)', value: '4:00pm', color: '#f97316' },
                   { label: '17:00 (5 PM)', value: '5:00pm', color: '#f97316' },
                   { label: '18:00 (6 PM)', value: '6:00pm', color: '#f97316' },

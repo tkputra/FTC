@@ -44,7 +44,7 @@ export default function CourtBooking() {
     last_name: 'Putra',
     address: 'Fortune spring Blok D2 - J05',
     phone: '08111819112',
-    target_hours: ['6:00am', '7:00am', '8:00am', '9:00am', '4:00pm', '5:00pm', '6:00pm'],
+    target_hours: ['6:00am', '7:00am', '8:00am', '9:00am', '4:00pm', '5:00pm', '6:00pm', '7:00pm'],
     target_days: ['Mon', 'Tue', 'Wed', 'Thu'],
     is_active: true,
     last_check_message: 'Sistem siap memantau jadwal'
@@ -220,7 +220,7 @@ export default function CourtBooking() {
               </span>
             </div>
             <div style={{ color: 'white', fontSize: '0.8rem', lineHeight: '1.4' }}>
-              <span style={{ color: '#34d399', fontWeight: 600 }}>06-09 AM</span> & <span style={{ color: '#f97316', fontWeight: 600 }}>04-06 PM</span> (Sen-Kam)
+              <span style={{ color: '#34d399', fontWeight: 600 }}>06-09 AM</span> & <span style={{ color: '#f97316', fontWeight: 600 }}>04-07 PM</span> (Sen-Kam)
             </div>
           </div>
 

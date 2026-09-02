@@ -6,9 +6,10 @@ interface BookingAccount {
   id?: string;
   first_name: string;
   last_name: string;
-  email_prefix: string;
-  email_domain: string;
-  current_email_index: number;
+  email: string;
+  email_prefix?: string;
+  email_domain?: string;
+  current_email_index?: number;
   address: string;
   phone: string;
   is_active: boolean;
@@ -45,7 +46,7 @@ const GOOGLE_CALENDAR_URL = 'https://calendar.app.google/iueH4Lnt6qsCgVmZ6';
 
 export default function CourtBooking() {
   const [settings, setSettings] = useState<MasterSettings>({
-    target_hours: ['6:00am', '7:00am', '8:00am', '9:00am', '4:00pm', '5:00pm', '6:00pm', '7:00pm'],
+    target_hours: ['6:00am', '7:00am', '8:00am', '9:00am', '10:00am', '2:00pm', '3:00pm', '4:00pm', '5:00pm', '6:00pm', '7:00pm'],
     target_days: ['Mon', 'Tue', 'Wed', 'Thu'],
     is_active: true,
     last_check_message: 'Sistem siap memantau jadwal'
@@ -63,9 +64,7 @@ export default function CourtBooking() {
   const [accountFormData, setAccountFormData] = useState<BookingAccount>({
     first_name: '',
     last_name: '',
-    email_prefix: '',
-    email_domain: 'gmail.com',
-    current_email_index: 1,
+    email: '',
     address: 'Fortune spring Blok ',
     phone: '08',
     is_active: true,
@@ -129,6 +128,15 @@ export default function CourtBooking() {
     return new Date(a.last_booked_at).getTime() - new Date(b.last_booked_at).getTime();
   })[0];
 
+  function getDisplayEmail(acc: BookingAccount) {
+    if (acc.email && acc.email.includes('@')) return acc.email;
+    if (acc.email_prefix) {
+      if (acc.email_prefix.includes('@')) return acc.email_prefix;
+      return `${acc.email_prefix}@${acc.email_domain || 'gmail.com'}`;
+    }
+    return '';
+  }
+
   // Open Modal to Add
   function handleOpenAddModal() {
     setModalMode('add');
@@ -136,9 +144,7 @@ export default function CourtBooking() {
     setAccountFormData({
       first_name: '',
       last_name: '',
-      email_prefix: '',
-      email_domain: 'gmail.com',
-      current_email_index: 1,
+      email: '',
       address: 'Fortune spring Blok ',
       phone: '08',
       is_active: true,
@@ -151,7 +157,10 @@ export default function CourtBooking() {
   function handleOpenEditModal(acc: BookingAccount) {
     setModalMode('edit');
     setEditingId(acc.id || null);
-    setAccountFormData({ ...acc });
+    setAccountFormData({
+      ...acc,
+      email: getDisplayEmail(acc)
+    });
     setIsModalOpen(true);
   }
 
@@ -196,6 +205,10 @@ export default function CourtBooking() {
   async function handleSaveAccount(e: React.FormEvent) {
     e.preventDefault();
     setIsSavingAccount(true);
+    const cleanEmail = accountFormData.email.trim().toLowerCase();
+    const emailPrefix = cleanEmail.split('@')[0] || cleanEmail;
+    const emailDomain = cleanEmail.includes('@') ? cleanEmail.split('@')[1] : 'gmail.com';
+
     try {
       if (modalMode === 'add') {
         const { data, error } = await supabase
@@ -203,9 +216,9 @@ export default function CourtBooking() {
           .insert([{
             first_name: accountFormData.first_name.trim(),
             last_name: accountFormData.last_name.trim(),
-            email_prefix: accountFormData.email_prefix.trim().toLowerCase(),
-            email_domain: accountFormData.email_domain.trim().toLowerCase() || 'gmail.com',
-            current_email_index: accountFormData.current_email_index || 1,
+            email: cleanEmail,
+            email_prefix: emailPrefix,
+            email_domain: emailDomain,
             address: accountFormData.address.trim(),
             phone: accountFormData.phone.trim(),
             is_active: accountFormData.is_active ?? true,
@@ -225,9 +238,9 @@ export default function CourtBooking() {
           .update({
             first_name: accountFormData.first_name.trim(),
             last_name: accountFormData.last_name.trim(),
-            email_prefix: accountFormData.email_prefix.trim().toLowerCase(),
-            email_domain: accountFormData.email_domain.trim().toLowerCase() || 'gmail.com',
-            current_email_index: accountFormData.current_email_index || 1,
+            email: cleanEmail,
+            email_prefix: emailPrefix,
+            email_domain: emailDomain,
             address: accountFormData.address.trim(),
             phone: accountFormData.phone.trim(),
             is_active: accountFormData.is_active
@@ -347,8 +360,8 @@ export default function CourtBooking() {
             <div className="flex items-center justify-between mb-2">
               <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', fontWeight: 600, textTransform: 'uppercase' }}>Giliran Pemesan</span>
               {nextInLineAccount && (
-                <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 700, background: 'rgba(56, 189, 248, 0.15)', padding: '2px 8px', borderRadius: '12px' }}>
-                  Index +{nextInLineAccount.current_email_index || 1}
+                <span style={{ fontSize: '0.72rem', color: '#38bdf8', fontWeight: 700, background: 'rgba(56, 189, 248, 0.15)', padding: '2px 8px', borderRadius: '12px' }}>
+                  {nextInLineAccount.total_bookings || 0}x Booked
                 </span>
               )}
             </div>
@@ -357,8 +370,8 @@ export default function CourtBooking() {
                 <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <User size={15} color="#38bdf8" /> {nextInLineAccount.first_name} {nextInLineAccount.last_name}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${nextInLineAccount.email_prefix}+${nextInLineAccount.current_email_index}@${nextInLineAccount.email_domain}`}>
-                  {nextInLineAccount.email_prefix}+{nextInLineAccount.current_email_index}@{nextInLineAccount.email_domain}
+                <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={getDisplayEmail(nextInLineAccount)}>
+                  {getDisplayEmail(nextInLineAccount)}
                 </div>
               </div>
             ) : (
@@ -371,13 +384,13 @@ export default function CourtBooking() {
             <div className="flex items-center justify-between mb-2">
               <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', fontWeight: 600, textTransform: 'uppercase' }}>Target Jam</span>
               <span style={{ fontSize: '0.75rem', color: '#facc15', fontWeight: 700, background: 'rgba(250, 204, 21, 0.15)', padding: '2px 8px', borderRadius: '12px' }}>
-                8 Slot (Sen-Kam)
+                Sen - Kam
               </span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '0.7rem', color: '#34d399', fontWeight: 800, width: '32px' }}>Pagi:</span>
-                {['06:00', '07:00', '08:00', '09:00'].map(h => (
+                {['06:00', '07:00', '08:00', '09:00', '10:00'].map(h => (
                   <span key={h} style={{ fontSize: '0.7rem', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', background: 'rgba(52, 211, 153, 0.15)', color: '#34d399' }}>
                     {h}
                   </span>
@@ -385,7 +398,7 @@ export default function CourtBooking() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '0.7rem', color: '#f97316', fontWeight: 800, width: '32px' }}>Sore:</span>
-                {['16:00', '17:00', '18:00', '19:00'].map(h => (
+                {['14:00', '15:00', '16:00', '17:00', '18:00', '19:00'].map(h => (
                   <span key={h} style={{ fontSize: '0.7rem', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', background: 'rgba(249, 115, 22, 0.15)', color: '#f97316' }}>
                     {h}
                   </span>
@@ -604,7 +617,7 @@ export default function CourtBooking() {
             <div style={{ display: 'grid', gap: '1rem' }}>
               {accounts.map((acc) => {
                 const isNext = nextInLineAccount && nextInLineAccount.id === acc.id;
-                const emailAlias = `${acc.email_prefix}+${acc.current_email_index || 1}@${acc.email_domain || 'gmail.com'}`;
+                const emailAddress = getDisplayEmail(acc);
 
                 return (
                   <div 
@@ -659,7 +672,7 @@ export default function CourtBooking() {
                             )}
                           </div>
                           <div style={{ color: '#38bdf8', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Mail size={14} /> {emailAlias}
+                            <Mail size={14} /> {emailAddress}
                           </div>
                         </div>
                       </div>
@@ -769,7 +782,7 @@ export default function CourtBooking() {
             {/* Target Hours Indicator */}
             <div>
               <label style={{ display: 'block', color: 'var(--color-text-light)', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
-                Slot Jam Target Pemesanan (Pagi: 06-09, Sore/Malam: 16-19):
+                Slot Jam Target Pemesanan:
               </label>
               <div className="flex flex-wrap gap-2">
                 {[
@@ -777,6 +790,9 @@ export default function CourtBooking() {
                   { label: '07:00 (7 AM)', value: '7:00am', color: '#34d399' },
                   { label: '08:00 (8 AM)', value: '8:00am', color: '#34d399' },
                   { label: '09:00 (9 AM)', value: '9:00am', color: '#34d399' },
+                  { label: '10:00 (10 AM)', value: '10:00am', color: '#34d399' },
+                  { label: '14:00 (2 PM)', value: '2:00pm', color: '#f97316' },
+                  { label: '15:00 (3 PM)', value: '3:00pm', color: '#f97316' },
                   { label: '16:00 (4 PM)', value: '4:00pm', color: '#f97316' },
                   { label: '17:00 (5 PM)', value: '5:00pm', color: '#f97316' },
                   { label: '18:00 (6 PM)', value: '6:00pm', color: '#f97316' },
@@ -798,9 +814,6 @@ export default function CourtBooking() {
                   </span>
                 ))}
               </div>
-              <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-light)', fontSize: '0.75rem' }}>
-                *Bot otomatis memprioritaskan slot pagi (06:00 - 09:00) dan sore/malam (16:00 - 19:00) pada hari Senin s/d Kamis.
-              </p>
             </div>
 
             <button 
@@ -881,41 +894,18 @@ export default function CourtBooking() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem' }}>
-                <div>
-                  <label style={{ display: 'block', color: 'var(--color-text-light)', fontSize: '0.85rem', marginBottom: '0.3rem' }}>
-                    Email Prefix:
-                  </label>
-                  <input 
-                    type="text" 
-                    className="input-field" 
-                    value={accountFormData.email_prefix} 
-                    onChange={(e) => setAccountFormData(prev => ({ ...prev, email_prefix: e.target.value }))}
-                    placeholder="dias.pratama"
-                    required 
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', color: 'var(--color-text-light)', fontSize: '0.85rem', marginBottom: '0.3rem' }}>
-                    Index Alias:
-                  </label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span style={{ color: 'white', fontWeight: 700 }}>+</span>
-                    <input 
-                      type="number" 
-                      className="input-field" 
-                      value={accountFormData.current_email_index} 
-                      onChange={(e) => setAccountFormData(prev => ({ ...prev, current_email_index: parseInt(e.target.value) || 1 }))}
-                      min={1}
-                      required 
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ background: 'rgba(56, 189, 248, 0.1)', padding: '0.6rem 0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(56, 189, 248, 0.25)', color: '#38bdf8', fontSize: '0.8rem' }}>
-                ℹ️ <strong>Preview Email:</strong> {accountFormData.email_prefix || 'email'}+{accountFormData.current_email_index || 1}@{accountFormData.email_domain || 'gmail.com'}
+              <div>
+                <label style={{ display: 'block', color: 'var(--color-text-light)', fontSize: '0.85rem', marginBottom: '0.3rem' }}>
+                  Alamat Email (Google / Gmail):
+                </label>
+                <input 
+                  type="email" 
+                  className="input-field" 
+                  value={accountFormData.email} 
+                  onChange={(e) => setAccountFormData(prev => ({ ...prev, email: e.target.value }))}
+                  placeholder="contoh: dias.pratama@gmail.com"
+                  required 
+                />
               </div>
 
               <div>

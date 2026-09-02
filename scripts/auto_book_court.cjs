@@ -1,7 +1,7 @@
 /**
  * FTC Automated Court Booking Bot (Google Calendar Appointments)
  * Target URL: https://calendar.app.google/iueH4Lnt6qsCgVmZ6
- * Multi-Person Round-Robin Support
+ * Multi-Person Round-Robin Support (Clean Direct Email, Multi-Slot Booking)
  */
 
 const { chromium } = require('playwright');
@@ -17,20 +17,22 @@ const TARGET_URL = 'https://calendar.app.google/iueH4Lnt6qsCgVmZ6';
 // Fallback Preferences
 const DEFAULT_FIRST_NAME = 'Tri';
 const DEFAULT_LAST_NAME = 'Putra';
-const DEFAULT_EMAIL_PREFIX = 'tri.kartika.putra';
-const DEFAULT_EMAIL_DOMAIN = 'gmail.com';
+const DEFAULT_EMAIL = 'tri.kartika.putra@gmail.com';
 const DEFAULT_ADDRESS = 'Fortune spring Blok D2 - J05';
 const DEFAULT_PHONE = '08111819112';
 
 // Allowed Days: Mon - Thu only (Exclude Fri, Sat, Sun)
 const IGNORED_DAYS = ['fri', 'sat', 'sun', 'jumat', 'sabtu', 'minggu', 'friday', 'saturday', 'sunday', 'jum', 'sab', 'min'];
 
-// Target Hours (Exact Match Only: 6am, 7am, 8am, 9am, 4pm, 5pm, 6pm, 7pm)
+// Target Hours (Includes 6am, 7am, 8am, 9am, 10am, 2pm, 3pm, 4pm, 5pm, 6pm, 7pm)
 const VALID_HOURS = [
   '06:00', '6:00', '6:00am', '06:00am',
   '07:00', '7:00', '7:00am', '07:00am',
   '08:00', '8:00', '8:00am', '08:00am',
   '09:00', '9:00', '9:00am', '09:00am',
+  '10:00', '10:00am',
+  '14:00', '2:00pm', '02:00pm',
+  '15:00', '3:00pm', '03:00pm',
   '16:00', '4:00pm', '04:00pm',
   '17:00', '5:00pm', '05:00pm',
   '18:00', '6:00pm', '06:00pm',
@@ -45,6 +47,17 @@ function isTargetTime(timeStr) {
 function isIgnoredDay(dayStr) {
   const clean = dayStr.trim().toLowerCase();
   return IGNORED_DAYS.some(d => clean.includes(d));
+}
+
+function getAccountEmail(account) {
+  if (account.email && account.email.includes('@')) {
+    return account.email.trim();
+  }
+  if (account.email_prefix) {
+    if (account.email_prefix.includes('@')) return account.email_prefix.trim();
+    return `${account.email_prefix.trim()}@${account.email_domain || 'gmail.com'}`;
+  }
+  return DEFAULT_EMAIL;
 }
 
 async function getMasterSettings() {
@@ -80,9 +93,7 @@ async function getNextBookingAccount() {
         id: null,
         first_name: DEFAULT_FIRST_NAME,
         last_name: DEFAULT_LAST_NAME,
-        email_prefix: DEFAULT_EMAIL_PREFIX,
-        email_domain: DEFAULT_EMAIL_DOMAIN,
-        current_email_index: 4,
+        email: DEFAULT_EMAIL,
         address: DEFAULT_ADDRESS,
         phone: DEFAULT_PHONE
       };
@@ -95,9 +106,7 @@ async function getNextBookingAccount() {
       id: null,
       first_name: DEFAULT_FIRST_NAME,
       last_name: DEFAULT_LAST_NAME,
-      email_prefix: DEFAULT_EMAIL_PREFIX,
-      email_domain: DEFAULT_EMAIL_DOMAIN,
-      current_email_index: 4,
+      email: DEFAULT_EMAIL,
       address: DEFAULT_ADDRESS,
       phone: DEFAULT_PHONE
     };
@@ -134,26 +143,24 @@ async function recordSuccessfulBooking(date, time, dayName, email, account) {
         last_name: account.last_name,
         phone: account.phone,
         status: 'confirmed',
-        notes: `Auto-booked via Bot for ${account.first_name} ${account.last_name} on ${new Date().toLocaleString('id-ID')}`
+        notes: `Auto-booked via Bot for ${account.first_name} ${account.last_name} (${email}) on ${new Date().toLocaleString('id-ID')}`
       }]);
 
     if (insertError) console.error('Error recording booking:', insertError.message);
 
-    // 2. Increment account's email index & update last_booked_at in booking_accounts
-    const nextIndex = (account.current_email_index || 1) + 1;
+    // 2. Update total_bookings and last_booked_at in booking_accounts
     const newTotal = (account.total_bookings || 0) + 1;
 
     if (account.id) {
       await supabase
         .from('booking_accounts')
         .update({
-          current_email_index: nextIndex,
           total_bookings: newTotal,
           last_booked_at: new Date().toISOString()
         })
         .eq('id', account.id);
 
-      console.log(`[ACCOUNT_UPDATED] ${account.first_name} ${account.last_name} next index: +${nextIndex}, total bookings: ${newTotal}`);
+      console.log(`[ACCOUNT_UPDATED] ${account.first_name} ${account.last_name} (${email}) total bookings: ${newTotal}`);
     }
 
     // 3. Update master settings log
@@ -167,26 +174,81 @@ async function recordSuccessfulBooking(date, time, dayName, email, account) {
       })
       .eq('id', 1);
 
-    console.log(`[SUCCESS] Booking successfully recorded & round-robin rotation shifted!`);
+    console.log(`[SUCCESS] Booking successfully recorded & round-robin rotation shifted to next person!`);
   } catch (err) {
     console.error('Failed to record successful booking:', err.message);
   }
 }
 
+/**
+ * Books a single candidate slot
+ */
+async function bookSingleSlot(page, slotBtn, candidateTime, candidateDate, candidateDay, account) {
+  const currentEmail = getAccountEmail(account);
+  console.log(`[ACTION] Booking slot ${candidateTime} for ${account.first_name} ${account.last_name} (${currentEmail})...`);
+
+  // Click candidate slot to open modal
+  await slotBtn.click();
+  await page.waitForTimeout(2000);
+
+  // 1. First Name
+  const firstNameInput = page.locator('input[type="text"]:visible').first();
+  await firstNameInput.click();
+  await firstNameInput.pressSequentially(account.first_name || DEFAULT_FIRST_NAME, { delay: 35 });
+
+  // 2. Last Name
+  const lastNameInput = page.locator('input[type="text"]:visible').nth(1);
+  await lastNameInput.click();
+  await lastNameInput.pressSequentially(account.last_name || DEFAULT_LAST_NAME, { delay: 35 });
+
+  // 3. Email Address
+  const emailInput = page.locator('input[type="email"]:visible').first();
+  await emailInput.click();
+  await emailInput.pressSequentially(currentEmail, { delay: 35 });
+
+  // 4. Address
+  const addressInput = page.locator('textarea:visible').first();
+  await addressInput.click();
+  await addressInput.pressSequentially(account.address || DEFAULT_ADDRESS, { delay: 35 });
+
+  // 5. WhatsApp Phone
+  const phoneInput = page.locator('textarea:visible').nth(1);
+  await phoneInput.click();
+  await phoneInput.pressSequentially(account.phone || DEFAULT_PHONE, { delay: 35 });
+
+  await page.waitForTimeout(1000);
+
+  // Click "Reservasi" / "Book"
+  console.log('[ACTION] Clicking "Reservasi" button...');
+  const bookButton = page.locator('button:has-text("Reservasi"), button:has-text("Book"), button:has-text("Pesan")').first();
+  await bookButton.click();
+
+  // Wait for confirmation
+  console.log('[WAIT] Waiting for booking confirmation...');
+  const confirmBtn = page.locator('button:has-text("Tutup"), button:has-text("Close")').first();
+  await confirmBtn.waitFor({ state: 'visible', timeout: 20000 });
+
+  console.log(`[CONFIRMED] Slot ${candidateTime} confirmed for ${account.first_name} ${account.last_name}!`);
+
+  // Record to database and shift round-robin turn
+  await recordSuccessfulBooking(candidateDate, candidateTime, candidateDay, currentEmail, account);
+
+  // Close modal to return to calendar
+  const closeBtn = page.locator('button:has-text("Tutup"), button:has-text("Close")').first();
+  if (await closeBtn.count() > 0) {
+    await closeBtn.click();
+    await page.waitForTimeout(2000);
+  }
+}
+
 async function runAutoBooking() {
-  console.log(`[START] FTC Court Auto-Booking Bot (Multi-Person) @ ${new Date().toISOString()}`);
+  console.log(`[START] FTC Court Auto-Booking Bot (Multi-Person Round-Robin) @ ${new Date().toISOString()}`);
   
   const masterSettings = await getMasterSettings();
   if (masterSettings.is_active === false) {
     console.log('[INFO] Auto-booking is currently disabled in master settings. Skipping.');
     return;
   }
-
-  // Get current round-robin account
-  const account = await getNextBookingAccount();
-  const currentEmail = `${account.email_prefix}+${account.current_email_index || 1}@${account.email_domain || 'gmail.com'}`;
-  
-  console.log(`[ROBIN_TURN] Next in line: ${account.first_name} ${account.last_name} (${currentEmail})`);
 
   let browser;
   try {
@@ -209,7 +271,7 @@ async function runAutoBooking() {
 
     const page = await context.newPage();
 
-    // Stealth: Remove webdriver flag to bypass invisible reCAPTCHA
+    // Stealth: Remove webdriver flag
     await page.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', {
         get: () => undefined,
@@ -220,90 +282,59 @@ async function runAutoBooking() {
     await page.goto(TARGET_URL, { waitUntil: 'networkidle', timeout: 30000 });
     await page.waitForTimeout(3000);
 
-    const allButtons = await page.$$('button');
-    let candidateSlot = null;
-    let candidateDate = '';
-    let candidateTime = '';
-    let candidateDay = '';
+    let bookedCount = 0;
+    const maxBookingsPerRun = 5; // Allow booking multiple available target slots in one run
 
-    console.log(`[INFO] Scanning calendar days and slots...`);
+    while (bookedCount < maxBookingsPerRun) {
+      const allButtons = await page.$$('button');
+      let candidateSlot = null;
+      let candidateDate = '';
+      let candidateTime = '';
+      let candidateDay = '';
 
-    // Find first valid slot matching target hours (6-9am, 4-7pm) on Mon-Thu
-    for (let i = 0; i < allButtons.length; i++) {
-      const btn = allButtons[i];
-      const text = (await btn.innerText()).trim();
-      const ariaLabel = (await btn.getAttribute('aria-label')) || '';
-      const combinedInfo = `${text} ${ariaLabel}`;
+      console.log(`[INFO] Scanning calendar days and slots...`);
 
-      if (isTargetTime(text) || isTargetTime(ariaLabel)) {
-        // Check day: Must NOT be Friday, Saturday, Sunday
-        if (!isIgnoredDay(combinedInfo)) {
-          console.log(`[MATCH] Found target slot: "${text}" (${ariaLabel})`);
-          candidateSlot = btn;
-          candidateTime = text;
-          candidateDate = ariaLabel || text;
-          break;
-        } else {
-          console.log(`[IGNORE] Slot "${text}" is on weekend/Friday (${combinedInfo}). Skipping.`);
+      for (let i = 0; i < allButtons.length; i++) {
+        const btn = allButtons[i];
+        const text = (await btn.innerText()).trim();
+        const ariaLabel = (await btn.getAttribute('aria-label')) || '';
+        const combinedInfo = `${text} ${ariaLabel}`;
+
+        if (isTargetTime(text) || isTargetTime(ariaLabel)) {
+          if (!isIgnoredDay(combinedInfo)) {
+            console.log(`[MATCH] Found target slot: "${text}" (${ariaLabel})`);
+            candidateSlot = btn;
+            candidateTime = text;
+            candidateDate = ariaLabel || text;
+            break;
+          }
         }
       }
+
+      if (!candidateSlot) {
+        if (bookedCount === 0) {
+          const msg = `Pengecekan selesai pada ${new Date().toLocaleTimeString('id-ID')}. Belum ada slot target yang tersedia.`;
+          console.log(`[NO_SLOT] ${msg}`);
+          await updateCheckStatus('no_slots', msg);
+        }
+        break; // No more slots available in this run
+      }
+
+      // Fetch the next person in line for this booking!
+      const account = await getNextBookingAccount();
+      console.log(`[ROBIN_TURN] Booking slot ${candidateTime} for: ${account.first_name} ${account.last_name} (${getAccountEmail(account)})`);
+
+      // Execute booking for this slot
+      await bookSingleSlot(page, candidateSlot, candidateTime, candidateDate, candidateDay, account);
+      bookedCount++;
+
+      // Wait 3s before checking if there are more slots to book in this run
+      await page.waitForTimeout(3000);
+      await page.goto(TARGET_URL, { waitUntil: 'networkidle', timeout: 30000 });
+      await page.waitForTimeout(2000);
     }
 
-    if (!candidateSlot) {
-      const msg = `Pengecekan selesai pada ${new Date().toLocaleTimeString('id-ID')}. Belum ada slot target (06-09 AM, 04-07 PM Sen-Kam) yang tersedia.`;
-      console.log(`[NO_SLOT] ${msg}`);
-      await updateCheckStatus('no_slots', msg);
-      return;
-    }
-
-    // Click candidate slot to open modal
-    console.log(`[ACTION] Clicking slot button: ${candidateTime}...`);
-    await candidateSlot.click();
-    await page.waitForTimeout(2000);
-
-    // Fill form inputs in modal with realistic human-like typing
-    console.log(`[ACTION] Filling booking form for ${account.first_name} ${account.last_name} with email: ${currentEmail}...`);
-
-    // 1. First Name (First visible text input)
-    const firstNameInput = page.locator('input[type="text"]:visible').first();
-    await firstNameInput.click();
-    await firstNameInput.pressSequentially(account.first_name || DEFAULT_FIRST_NAME, { delay: 40 });
-
-    // 2. Last Name (Second visible text input)
-    const lastNameInput = page.locator('input[type="text"]:visible').nth(1);
-    await lastNameInput.click();
-    await lastNameInput.pressSequentially(account.last_name || DEFAULT_LAST_NAME, { delay: 40 });
-
-    // 3. Email Address
-    const emailInput = page.locator('input[type="email"]:visible').first();
-    await emailInput.click();
-    await emailInput.pressSequentially(currentEmail, { delay: 40 });
-
-    // 4. Custom field: Alamat Fortune dengan no Blok (First visible textarea)
-    const addressInput = page.locator('textarea:visible').first();
-    await addressInput.click();
-    await addressInput.pressSequentially(account.address || DEFAULT_ADDRESS, { delay: 40 });
-
-    // 5. Custom field: Nomor Whatsapp Aktif (Second visible textarea)
-    const phoneInput = page.locator('textarea:visible').nth(1);
-    await phoneInput.click();
-    await phoneInput.pressSequentially(account.phone || DEFAULT_PHONE, { delay: 40 });
-
-    await page.waitForTimeout(1000);
-
-    // Click "Reservasi" / "Book" button
-    console.log('[ACTION] Clicking "Reservasi" / "Book" button...');
-    const bookButton = page.locator('button:has-text("Reservasi"), button:has-text("Book"), button:has-text("Pesan"), button:has-text("Jadwalkan")').first();
-    await bookButton.click();
-
-    // Wait for confirmation screen
-    console.log('[WAIT] Waiting for booking confirmation...');
-    await page.waitForSelector('button:has-text("Tutup"), button:has-text("Close"), text=/Perlu melakukan perubahan|Need to change|Batalkan janji temu/i', { timeout: 20000 });
-
-    console.log('[CONFIRMED] Booking confirmed successfully by Google Calendar!');
-
-    // Record to database and rotate account
-    await recordSuccessfulBooking(candidateDate, candidateTime, candidateDay, currentEmail, account);
+    console.log(`[FINISH] Total slots booked in this run: ${bookedCount}`);
 
   } catch (err) {
     console.error('[ERROR] Automation error during execution:', err);

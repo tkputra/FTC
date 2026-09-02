@@ -316,11 +316,11 @@ export default function CourtBooking() {
           </div>
         </div>
 
-        {/* Live Status Summary Card */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '1rem', marginTop: '1.5rem' }}>
+        {/* Live Status Summary Cards (Top Row: 3 Columns) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginTop: '1.5rem' }}>
           
-          {/* Status Box */}
-          <div style={{ background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.1)', minWidth: 0, overflow: 'hidden' }}>
+          {/* 1. Status Box */}
+          <div style={{ background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.1)', minWidth: 0 }}>
             <div className="flex items-center justify-between mb-2">
               <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', fontWeight: 600, textTransform: 'uppercase' }}>Status Auto-Bot</span>
               <span style={{ 
@@ -342,8 +342,8 @@ export default function CourtBooking() {
             </div>
           </div>
 
-          {/* Next in Line Person Box */}
-          <div style={{ background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.1)', minWidth: 0, overflow: 'hidden' }}>
+          {/* 2. Next in Line Person Box */}
+          <div style={{ background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.1)', minWidth: 0 }}>
             <div className="flex items-center justify-between mb-2">
               <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', fontWeight: 600, textTransform: 'uppercase' }}>Giliran Pemesan</span>
               {nextInLineAccount && (
@@ -366,12 +366,12 @@ export default function CourtBooking() {
             )}
           </div>
 
-          {/* Target Jam Box */}
-          <div style={{ background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.1)', minWidth: 0, overflow: 'hidden' }}>
+          {/* 3. Target Jam Box */}
+          <div style={{ background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.1)', minWidth: 0 }}>
             <div className="flex items-center justify-between mb-2">
               <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', fontWeight: 600, textTransform: 'uppercase' }}>Target Jam</span>
               <span style={{ fontSize: '0.75rem', color: '#facc15', fontWeight: 700, background: 'rgba(250, 204, 21, 0.15)', padding: '2px 8px', borderRadius: '12px' }}>
-                8 Slot
+                8 Slot (Sen-Kam)
               </span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
@@ -394,19 +394,30 @@ export default function CourtBooking() {
             </div>
           </div>
 
-          {/* Last Check Result Box */}
-          <div style={{ background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.1)', minWidth: 0, overflow: 'hidden' }}>
-            <div className="flex items-center justify-between mb-2">
-              <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', fontWeight: 600, textTransform: 'uppercase' }}>Pengecekan Terakhir</span>
-              <span style={{ fontSize: '0.75rem', color: 'gray' }}>
-                {settings.last_check_at ? new Date(settings.last_check_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}
+        </div>
+
+        {/* Full Width Bottom Banner: Pengecekan Terakhir */}
+        <div style={{ 
+          background: 'rgba(255,255,255,0.04)', 
+          padding: '0.9rem 1.25rem', 
+          borderRadius: 'var(--radius-md)', 
+          border: '1px solid rgba(255,255,255,0.08)',
+          marginTop: '0.85rem'
+        }}>
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-2">
+              <Clock size={15} color="var(--color-secondary)" />
+              <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Pengecekan Terakhir Bot
               </span>
             </div>
-            <p style={{ margin: 0, color: 'var(--color-text-light)', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={settings.last_check_message}>
-              {settings.last_check_message || 'Belum ada log pengecekan'}
-            </p>
+            <span style={{ fontSize: '0.75rem', color: '#94a3b8', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '10px' }}>
+              {settings.last_check_at ? new Date(settings.last_check_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' WIB' : 'Belum dicek'}
+            </span>
           </div>
-
+          <p style={{ margin: 0, color: 'white', fontSize: '0.85rem', lineHeight: '1.45', wordBreak: 'break-word' }}>
+            {settings.last_check_message || 'Sistem siap memantau jadwal'}
+          </p>
         </div>
       </div>
 

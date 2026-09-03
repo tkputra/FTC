@@ -138,9 +138,7 @@ async function recordSuccessfulBooking(date, time, dayName, email, account) {
         booked_email: email,
         first_name: account.first_name,
         last_name: account.last_name,
-        phone: account.phone,
-        status: 'confirmed',
-        notes: `Auto-booked via Bot for ${account.first_name} ${account.last_name} (${email}) on ${new Date().toLocaleString('id-ID')}`
+        notes: `Auto-booked via Bot for ${account.first_name} ${account.last_name} (${email}) on ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB`
       }]);
 
     if (insertError) console.error('Error recording booking:', insertError.message);
@@ -264,7 +262,7 @@ async function bookSingleSlot(page, slotBtn, candidateTime, candidateDate, candi
 }
 
 async function runAutoBooking() {
-  console.log(`[START] FTC Court Auto-Booking Bot (Multi-Person Round-Robin) @ ${new Date().toISOString()}`);
+  console.log(`[START] FTC Court Auto-Booking Bot (Multi-Person Round-Robin) @ ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB`);
   
   const masterSettings = await getMasterSettings();
   if (masterSettings.is_active === false) {
@@ -335,7 +333,8 @@ async function runAutoBooking() {
 
       if (!candidateSlot) {
         if (bookedCount === 0) {
-          const msg = `Pengecekan selesai pada ${new Date().toLocaleTimeString('id-ID')}. Belum ada slot target yang tersedia.`;
+          const timeWIB = new Date().toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          const msg = `Pengecekan selesai pada ${timeWIB} WIB. Belum ada slot target yang tersedia.`;
           console.log(`[NO_SLOT] ${msg}`);
           await updateCheckStatus('no_slots', msg);
         }
